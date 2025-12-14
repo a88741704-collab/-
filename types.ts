@@ -66,8 +66,16 @@ export interface Character {
   imageUrl?: string;
 }
 
+export interface Volume {
+  id: string;
+  title: string;
+  order: number;
+  description?: string;
+}
+
 export interface Chapter {
   id: string;
+  volumeId: string; // Link to volume
   number: number;
   title: string;
   summary: string;
@@ -99,11 +107,12 @@ export interface ProjectState {
   settingsCritique: string;
   characters: Character[];
   detailedOutline: string;
+  volumes: Volume[]; // New: List of volumes
   chapters: Chapter[];
   currentChapterId?: string;
   knowledgeBase: string[];
   knowledgeBaseFiles: KnowledgeFile[];
-  quickPhrases: string[]; // New: List of saved snippets
+  quickPhrases: string[];
 }
 
 export type AIModelType = 'text-fast' | 'text-reasoning' | 'image' | 'video';
