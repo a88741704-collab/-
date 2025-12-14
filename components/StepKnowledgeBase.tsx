@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ProjectState, KnowledgeFile, RAGConfig, TextChunk } from '../types';
 import RagSettingsModal from './RagSettingsModal';
+import mammoth from 'mammoth';
 
 interface Props {
   project: ProjectState;
@@ -18,20 +19,41 @@ interface SearchResult {
 // --- Real RAG Utilities ---
 
 // Helper to read file as text
-const readFileAsText = (file: File): Promise<string> => {
+const readFileAsText = async (file: File): Promise<string> => {
+    // 1. Handle DOCX files using mammoth
+    if (file.name.endsWith('.docx')) {
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const result = await mammoth.extractRawText({ arrayBuffer });
+            return result.value; // The raw text
+        } catch (e: any) {
+            console.error("DOCX parse error", e);
+            return `[解析 .docx 文件失败: ${e.message}]`;
+        }
+    }
+
+    // 2. Handle Text Files
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target?.result as string);
         reader.onerror = (e) => reject(e);
-        if (file.type.match(/text.*/) || file.name.endsWith('.md') || file.name.endsWith('.json') || file.name.endsWith('.txt')) {
+        
+        // Allowed text types
+        if (file.type.match(/text.*/) || 
+            file.name.endsWith('.md') || 
+            file.name.endsWith('.json') || 
+            file.name.endsWith('.txt') || 
+            file.name.endsWith('.csv') ||
+            file.name.endsWith('.js') ||
+            file.name.endsWith('.ts')) {
              reader.readAsText(file);
         } else {
-             resolve(`[Binary content of ${file.name} cannot be previewed in this local demo]`);
+             resolve(`[暂不支持的文件格式: ${file.name}。请上传 .docx, .txt, .md, .json]`);
         }
     });
 };
 
-// Recursive Character Text Splitter Simulation
+// Recursive Character Text Splitter (Optimized for Chinese)
 const recursiveSplitText = (text: string, chunkSize: number, chunkOverlap: number): TextChunk[] => {
     const chunks: TextChunk[] = [];
     if (!text) return chunks;
@@ -41,33 +63,70 @@ const recursiveSplitText = (text: string, chunkSize: number, chunkOverlap: numbe
         let endIndex = startIndex + chunkSize;
         
         if (endIndex < text.length) {
-            const doubleNewlineIndex = text.lastIndexOf('\n\n', endIndex);
-            const newlineIndex = text.lastIndexOf('\n', endIndex);
-            const spaceIndex = text.lastIndexOf(' ', endIndex);
-
-            const minProgress = Math.floor(chunkSize * 0.5);
+            // Priority 1: Paragraphs (Double newline)
+            let splitIndex = text.lastIndexOf('\n\n', endIndex);
             
-            if (doubleNewlineIndex > startIndex + minProgress) {
-                endIndex = doubleNewlineIndex + 2; 
-            } else if (newlineIndex > startIndex + minProgress) {
-                endIndex = newlineIndex + 1;
-            } else if (spaceIndex > startIndex + minProgress) {
-                endIndex = spaceIndex + 1;
+            // Priority 2: Single newline
+            if (splitIndex === -1 || splitIndex < startIndex + chunkSize * 0.5) {
+                splitIndex = text.lastIndexOf('\n', endIndex);
+            }
+
+            // Priority 3: Chinese Sentence Endings (。, ！？)
+            if (splitIndex === -1 || splitIndex < startIndex + chunkSize * 0.5) {
+                const regex = /[。！？]/g;
+                let match;
+                let lastMatchIndex = -1;
+                // Search for punctuation near the end
+                while ((match = regex.exec(text.substring(startIndex, endIndex))) !== null) {
+                    lastMatchIndex = startIndex + match.index;
+                }
+                if (lastMatchIndex !== -1) {
+                    splitIndex = lastMatchIndex + 1; // Include the punctuation
+                }
+            }
+
+            // Priority 4: Space (for English)
+            if (splitIndex === -1 || splitIndex < startIndex + chunkSize * 0.5) {
+                splitIndex = text.lastIndexOf(' ', endIndex);
+            }
+
+            // If found a valid split point, use it
+            if (splitIndex > startIndex) {
+                endIndex = splitIndex;
+                // If double newline, skip the newlines for the next start
+                if (text.substring(endIndex, endIndex + 2) === '\n\n') {
+                     endIndex += 2;
+                } else if (text[endIndex] === '\n') {
+                     endIndex += 1;
+                }
             }
         } else {
             endIndex = text.length;
         }
 
         const chunkText = text.substring(startIndex, endIndex);
-        chunks.push({
-            id: `chk-${Date.now()}-${chunks.length}`,
-            text: chunkText.trim(),
-            startIndex: startIndex,
-            endIndex: endIndex
-        });
+        
+        // Only add non-empty chunks
+        if (chunkText.trim().length > 0) {
+            chunks.push({
+                id: `chk-${Date.now()}-${chunks.length}`,
+                text: chunkText.trim(),
+                startIndex: startIndex,
+                endIndex: endIndex
+            });
+        }
 
-        const nextStart = endIndex - chunkOverlap;
-        startIndex = Math.max(startIndex + 1, nextStart);
+        // Move start index for next chunk, backing up by overlap
+        // Prevent infinite loop if overlap >= chunkSize (invalid config) or no progress
+        const nextStart = Math.max(startIndex + 1, endIndex - chunkOverlap);
+        
+        // Ensure we actually move forward
+        if (nextStart <= startIndex) {
+            startIndex = endIndex;
+        } else {
+            startIndex = nextStart;
+        }
+
         if (endIndex >= text.length) break;
     }
 
@@ -175,7 +234,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           content = await readFileAsText(file);
       } catch (e) {
           console.error("Failed to read file", e);
-          content = "Read Error";
+          content = "读取错误";
       }
 
       // 2. Perform Real Slicing
@@ -261,7 +320,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
       }
   };
 
-  const handleReindex = (id: string) => {
+  const handleReindex = async (id: string) => {
       if (reindexingId || !activeKb) return;
       setReindexingId(id);
       
