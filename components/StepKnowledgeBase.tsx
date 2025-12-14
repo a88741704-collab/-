@@ -10,6 +10,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
   const { ragConfig } = project.agentConfig;
   const [activeTab, setActiveTab] = useState<'files' | 'notes' | 'urls'>('files');
   const [dragActive, setDragActive] = useState(false);
+  const [reindexingId, setReindexingId] = useState<string | null>(null);
   
   // Inputs
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -70,6 +71,26 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           ...project,
           knowledgeBaseFiles: (project.knowledgeBaseFiles || []).filter(f => f.id !== id)
       });
+  };
+
+  const handleReindex = (id: string) => {
+      if (reindexingId) return;
+      setReindexingId(id);
+      
+      // Update status to processing
+      const updatedFiles = (project.knowledgeBaseFiles || []).map(f => 
+          f.id === id ? { ...f, status: 'processing' as const } : f
+      );
+      setProject({ ...project, knowledgeBaseFiles: updatedFiles });
+
+      // Simulate API call
+      setTimeout(() => {
+          const finishedFiles = updatedFiles.map(f => 
+             f.id === id ? { ...f, status: 'indexed' as const } : f
+          );
+          setProject({ ...project, knowledgeBaseFiles: finishedFiles });
+          setReindexingId(null);
+      }, 2000);
   };
 
   // Handlers for Notes
@@ -268,6 +289,17 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                                    <div className="text-xs text-red-500">错误</div>
                                )}
                                
+                               <button 
+                                   className="text-slate-500 hover:text-emerald-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity" 
+                                   title="重新索引 (Refresh)" 
+                                   onClick={() => handleReindex(file.id)}
+                                   disabled={reindexingId === file.id || file.status === 'processing'}
+                               >
+                                   <svg className={`w-4 h-4 ${reindexingId === file.id ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                   </svg>
+                               </button>
+
                                <button 
                                    className="text-slate-500 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity" 
                                    title="删除" 

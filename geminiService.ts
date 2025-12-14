@@ -14,6 +14,45 @@ const getEnvApiKey = () => {
 // Initialize the API client - always creates a new instance to pick up the latest key
 const getAI = () => new GoogleGenAI({ apiKey: getEnvApiKey() });
 
+// --- Helper: Fetch Available Models (OpenAI Compatible) ---
+export const fetchAvailableModels = async (baseUrl: string, apiKey: string): Promise<string[]> => {
+    try {
+        let cleanBaseUrl = baseUrl.replace(/\/+$/, '').trim();
+        // Remove common suffixes if user included them
+        cleanBaseUrl = cleanBaseUrl.replace(/\/chat\/completions$/, '').replace(/\/embeddings$/, '');
+        
+        if (!cleanBaseUrl.startsWith('http')) {
+            cleanBaseUrl = `https://${cleanBaseUrl}`;
+        }
+
+        // Standard OpenAI endpoint is /models. 
+        // Some providers need /v1/models, usually the baseUrl includes /v1 if needed, but we append /models.
+        const url = `${cleanBaseUrl}/models`;
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            },
+            mode: 'cors'
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            // Standard OpenAI format: { data: [{ id: "model-name", ... }] }
+            if (Array.isArray(data.data)) {
+                return data.data.map((m: any) => m.id).sort();
+            }
+            return [];
+        }
+        return [];
+    } catch (e) {
+        console.error("Failed to fetch models", e);
+        return [];
+    }
+};
+
 // --- Helper: Test API Connection ---
 export const testApiConnection = async (baseUrl: string, apiKey: string, model: string): Promise<{success: boolean, message: string}> => {
     try {

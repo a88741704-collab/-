@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { RAGConfig } from '../types';
-import { testApiConnection } from '../geminiService';
+import { testApiConnection, fetchAvailableModels } from '../geminiService';
 
 interface Props {
   config: RAGConfig;
@@ -15,6 +15,10 @@ const RagSettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
   // Test Connection State for RAG
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testMessage, setTestMessage] = useState('');
+
+  // Fetched models for dropdown
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
 
   const handleChange = (updates: Partial<RAGConfig>) => {
     setLocalConfig({ ...localConfig, ...updates });
@@ -40,6 +44,23 @@ const RagSettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
     
     if (result.success) {
         setTimeout(() => setTestStatus('idle'), 3000);
+    }
+  };
+
+  const handleFetchModels = async () => {
+    if (!localConfig.ragApiKey || !localConfig.ragBaseUrl) {
+        alert('请先填写 Base URL 和 API Key');
+        return;
+    }
+    setFetchingModels(true);
+    const models = await fetchAvailableModels(localConfig.ragBaseUrl, localConfig.ragApiKey);
+    setFetchingModels(false);
+    
+    if (models.length > 0) {
+        setFetchedModels(models);
+        // Maybe auto-set if empty? For now just populate list.
+    } else {
+        alert('无法获取模型列表，请检查配置或手动输入');
     }
   };
 
@@ -126,16 +147,31 @@ const RagSettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
                     </label>
                  </div>
                  <div className="relative">
-                    <select 
-                        value={localConfig.embeddingModel}
-                        onChange={(e) => handleChange({ embeddingModel: e.target.value })}
-                        className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white focus:border-emerald-500 focus:outline-none appearance-none text-xs"
-                    >
-                        <option value="BAAI/bge-large-zh-v1.5">BAAI/bge-large-zh-v1.5</option>
-                        <option value="BAAI/bge-m3">BAAI/bge-m3</option>
-                        <option value="text-embedding-004">text-embedding-004 (Google)</option>
-                        <option value="custom">Custom</option>
-                    </select>
+                     {localConfig.useSeparateApi ? (
+                         <>
+                            <input 
+                                list="rag-models" 
+                                value={localConfig.embeddingModel}
+                                onChange={(e) => handleChange({ embeddingModel: e.target.value })}
+                                className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white focus:border-emerald-500 focus:outline-none text-xs"
+                                placeholder="输入或选择模型"
+                            />
+                            <datalist id="rag-models">
+                                {fetchedModels.map(m => <option key={m} value={m} />)}
+                            </datalist>
+                         </>
+                     ) : (
+                        <select 
+                            value={localConfig.embeddingModel}
+                            onChange={(e) => handleChange({ embeddingModel: e.target.value })}
+                            className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white focus:border-emerald-500 focus:outline-none appearance-none text-xs"
+                        >
+                            <option value="BAAI/bge-large-zh-v1.5">BAAI/bge-large-zh-v1.5</option>
+                            <option value="BAAI/bge-m3">BAAI/bge-m3</option>
+                            <option value="text-embedding-004">text-embedding-004 (Google)</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                     )}
                  </div>
               </div>
 
@@ -190,15 +226,30 @@ const RagSettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
                         <label className="text-slate-300 font-semibold flex items-center gap-1">
                             重排模型 (Rerank)
                         </label>
-                        <select 
-                            value={localConfig.rerankModel || ''}
-                            onChange={(e) => handleChange({ rerankModel: e.target.value })}
-                            className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white focus:border-emerald-500 focus:outline-none text-xs"
-                        >
-                            <option value="">Disabled (None)</option>
-                            <option value="BAAI/bge-reranker-v2-m3">BAAI/bge-reranker-v2-m3</option>
-                            <option value="BAAI/bge-reranker-large">BAAI/bge-reranker-large</option>
-                        </select>
+                        {localConfig.useSeparateApi ? (
+                            <>
+                                <input 
+                                    list="rag-models-rerank" 
+                                    value={localConfig.rerankModel || ''}
+                                    onChange={(e) => handleChange({ rerankModel: e.target.value })}
+                                    className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white focus:border-emerald-500 focus:outline-none text-xs"
+                                    placeholder="输入或选择模型 (可选)"
+                                />
+                                <datalist id="rag-models-rerank">
+                                    {fetchedModels.map(m => <option key={m} value={m} />)}
+                                </datalist>
+                            </>
+                        ) : (
+                            <select 
+                                value={localConfig.rerankModel || ''}
+                                onChange={(e) => handleChange({ rerankModel: e.target.value })}
+                                className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white focus:border-emerald-500 focus:outline-none text-xs"
+                            >
+                                <option value="">Disabled (None)</option>
+                                <option value="BAAI/bge-reranker-v2-m3">BAAI/bge-reranker-v2-m3</option>
+                                <option value="BAAI/bge-reranker-large">BAAI/bge-reranker-large</option>
+                            </select>
+                        )}
                    </div>
 
                    {/* Chunking */}
@@ -286,6 +337,15 @@ const RagSettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
                                             className="absolute right-1 top-1 bottom-1 px-2 bg-slate-700 hover:bg-slate-600 rounded text-xs text-white transition-colors"
                                         >
                                             测试
+                                        </button>
+                                    </div>
+                                    <div className="mt-2 text-right">
+                                        <button 
+                                            onClick={handleFetchModels}
+                                            disabled={fetchingModels}
+                                            className="text-[10px] text-emerald-500 hover:text-emerald-400 underline"
+                                        >
+                                            {fetchingModels ? '获取中...' : '从 API 获取模型列表'}
                                         </button>
                                     </div>
                                 </div>

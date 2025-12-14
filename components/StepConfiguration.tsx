@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ProjectState, AgentConfig, AgentPlugin, RAGConfig } from '../types';
-import { testApiConnection } from '../geminiService';
+import { testApiConnection, fetchAvailableModels } from '../geminiService';
 import RagSettingsModal from './RagSettingsModal';
 
 interface Props {
@@ -23,6 +23,10 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
   // Test Connection State
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testMessage, setTestMessage] = useState('');
+
+  // Model Fetching State
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
 
   // RAG Modal State
   const [showRagModal, setShowRagModal] = useState(false);
@@ -95,6 +99,26 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
       // Clear message after 3 seconds if success
       if (result.success) {
           setTimeout(() => setTestStatus('idle'), 3000);
+      }
+  };
+
+  const handleFetchModels = async () => {
+      if (!config.customApiKey || !config.customBaseUrl) {
+          alert('请先填写 Base URL 和 API Key');
+          return;
+      }
+      setFetchingModels(true);
+      const models = await fetchAvailableModels(config.customBaseUrl, config.customApiKey);
+      setFetchingModels(false);
+      
+      if (models.length > 0) {
+          setFetchedModels(models);
+          // Auto select first if current model is empty or default
+          if (!config.model || config.model === 'deepseek-reasoner') {
+              updateConfig({ model: models[0] });
+          }
+      } else {
+          alert('无法获取模型列表，请检查配置或手动输入模型 ID');
       }
   };
 
@@ -249,13 +273,28 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                         </div>
                         
                         <div>
-                           <label className="text-xs text-slate-500 mb-2 block uppercase tracking-wider">Model ID</label>
+                           <div className="flex justify-between items-center mb-2">
+                               <label className="text-xs text-slate-500 block uppercase tracking-wider">Model ID</label>
+                               <button 
+                                   onClick={handleFetchModels}
+                                   disabled={fetchingModels}
+                                   className="text-[10px] bg-slate-700 hover:bg-emerald-600 text-white px-2 py-0.5 rounded transition-colors flex items-center gap-1"
+                               >
+                                   {fetchingModels ? '获取中...' : '⇩ 获取模型列表'}
+                               </button>
+                           </div>
                            <input 
+                              list="custom-models"
                               placeholder="deepseek-reasoner" 
                               value={config.model}
                               onChange={(e) => updateConfig({ model: e.target.value })}
                               className="w-full bg-black/30 border border-slate-600 rounded p-3 text-white focus:border-emerald-500 focus:outline-none font-mono text-sm"
                            />
+                           <datalist id="custom-models">
+                               {fetchedModels.map(m => (
+                                   <option key={m} value={m} />
+                               ))}
+                           </datalist>
                         </div>
                      </div>
                   )}
