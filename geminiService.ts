@@ -1,14 +1,18 @@
-import { GoogleGenAI, Schema, Type, Tool } from "@google/genai";
+import { GoogleGenAI, Type, Tool } from "@google/genai";
 import { ProjectState, Character, Chapter, AgentConfig } from './types';
 
-// Helper to safely get API Key from process.env if available, or return empty string
+// Helper to safely get API Key from process.env OR import.meta.env (Vite)
 const getEnvApiKey = () => {
-    try {
-        // @ts-ignore
-        return (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
-    } catch (e) {
-        return '';
+    // Priority: 1. Process Env (if defined via bundler define), 2. Vite Env, 3. Empty
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+        return process.env.API_KEY;
     }
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
+        // @ts-ignore
+        return import.meta.env.VITE_API_KEY;
+    }
+    return '';
 };
 
 // Initialize the API client - always creates a new instance to pick up the latest key
