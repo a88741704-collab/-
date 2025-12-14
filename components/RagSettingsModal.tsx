@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { RAGConfig } from '../types';
+import { testApiConnection } from '../geminiService';
 
 interface Props {
   config: RAGConfig;
@@ -10,9 +11,36 @@ interface Props {
 const RagSettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
   const [localConfig, setLocalConfig] = useState<RAGConfig>(config);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  
+  // Test Connection State for RAG
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [testMessage, setTestMessage] = useState('');
 
   const handleChange = (updates: Partial<RAGConfig>) => {
     setLocalConfig({ ...localConfig, ...updates });
+  };
+
+  const handleTestConnection = async () => {
+    if (!localConfig.ragApiKey || !localConfig.ragBaseUrl) {
+        setTestStatus('error');
+        setTestMessage('请填写 Base URL 和 API Key');
+        return;
+    }
+    setTestStatus('testing');
+    setTestMessage('正在连接...');
+    
+    // We use the embedding model as the model ID to check, though testApiConnection does a chat completion.
+    // Some endpoints might reject chat completions for embedding models.
+    // If it fails with a specific model error, it still proves connectivity.
+    // Ideally we would use a specific embedding test, but reusing the existing helper for now.
+    const result = await testApiConnection(localConfig.ragBaseUrl, localConfig.ragApiKey, localConfig.embeddingModel);
+    
+    setTestStatus(result.success ? 'success' : 'error');
+    setTestMessage(result.message);
+    
+    if (result.success) {
+        setTimeout(() => setTestStatus('idle'), 3000);
+    }
   };
 
   return (
@@ -197,14 +225,30 @@ const RagSettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-xs text-slate-500 block mb-1">API Key</label>
-                                    <input 
-                                        type="password"
-                                        value={localConfig.ragApiKey || ''}
-                                        onChange={(e) => handleChange({ ragApiKey: e.target.value })}
-                                        placeholder="sk-..."
-                                        className="w-full bg-slate-800/50 border border-slate-600 rounded p-2 text-white text-xs font-mono"
-                                    />
+                                    <div className="flex justify-between items-center mb-1">
+                                        <label className="text-xs text-slate-500 block">API Key</label>
+                                        <div className="flex items-center gap-2">
+                                            {testStatus === 'success' && <span className="text-emerald-500 text-xs">✓ 成功</span>}
+                                            {testStatus === 'error' && <span className="text-red-500 text-xs">{testMessage}</span>}
+                                            {testStatus === 'testing' && <span className="text-slate-400 text-xs animate-pulse">连接中...</span>}
+                                        </div>
+                                    </div>
+                                    <div className="relative">
+                                        <input 
+                                            type="password"
+                                            value={localConfig.ragApiKey || ''}
+                                            onChange={(e) => handleChange({ ragApiKey: e.target.value })}
+                                            placeholder="sk-..."
+                                            className={`w-full bg-slate-800/50 border ${testStatus === 'error' ? 'border-red-500' : 'border-slate-600'} rounded p-2 pr-16 text-white text-xs font-mono`}
+                                        />
+                                        <button 
+                                            onClick={handleTestConnection}
+                                            disabled={testStatus === 'testing'}
+                                            className="absolute right-1 top-1 bottom-1 px-2 bg-slate-700 hover:bg-slate-600 rounded text-xs text-white transition-colors"
+                                        >
+                                            测试
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         )}

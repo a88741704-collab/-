@@ -1,5 +1,6 @@
 export enum PipelineStep {
   Configuration = -1, // New Agent Setup Step
+  KnowledgeBase = -2, // Knowledge Base Management
   IdeaGeneration = 0,
   WorldReview = 1,
   CharacterDesign = 2,
@@ -15,6 +16,7 @@ export interface AgentPlugin {
   description: string;
   active: boolean;
   systemPromptAddon: string;
+  isCustom?: boolean; // Flag for user-created plugins
 }
 
 export interface RAGConfig {
@@ -75,6 +77,15 @@ export interface Chapter {
   animationUrl?: string;
 }
 
+export interface KnowledgeFile {
+  id: string;
+  name: string;
+  size: string;
+  type: string;
+  uploadDate: string;
+  status: 'indexed' | 'processing' | 'error';
+}
+
 export type AgentStatus = 'idle' | 'thinking' | 'generating' | 'error';
 
 export interface ProjectState {
@@ -91,6 +102,7 @@ export interface ProjectState {
   chapters: Chapter[];
   currentChapterId?: string;
   knowledgeBase: string[];
+  knowledgeBaseFiles: KnowledgeFile[];
 }
 
 export type AIModelType = 'text-fast' | 'text-reasoning' | 'image' | 'video';

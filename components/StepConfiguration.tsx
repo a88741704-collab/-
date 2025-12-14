@@ -27,6 +27,10 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
   // RAG Modal State
   const [showRagModal, setShowRagModal] = useState(false);
 
+  // New Plugin State
+  const [showPluginForm, setShowPluginForm] = useState(false);
+  const [newPlugin, setNewPlugin] = useState<Partial<AgentPlugin>>({ name: '', description: '', systemPromptAddon: '' });
+
   const updateConfig = (updates: Partial<AgentConfig>) => {
     setConfig({ ...config, ...updates });
   };
@@ -36,6 +40,21 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
       p.id === id ? { ...p, active: !p.active } : p
     );
     updateConfig({ plugins: newPlugins });
+  };
+
+  const handleAddPlugin = () => {
+      if (!newPlugin.name || !newPlugin.systemPromptAddon) return;
+      const plugin: AgentPlugin = {
+          id: `custom-${Date.now()}`,
+          name: newPlugin.name,
+          description: newPlugin.description || 'Custom user plugin',
+          systemPromptAddon: newPlugin.systemPromptAddon,
+          active: true,
+          isCustom: true
+      };
+      updateConfig({ plugins: [...config.plugins, plugin] });
+      setShowPluginForm(false);
+      setNewPlugin({ name: '', description: '', systemPromptAddon: '' });
   };
 
   const handleTestConnection = async () => {
@@ -292,11 +311,54 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
           {activeTab === 'plugins' && (
             <div className="space-y-4">
               <div className="flex gap-4 mb-4">
-                 <input placeholder="搜索插件..." className="flex-1 bg-black/30 border border-slate-700 rounded-lg px-4 py-2 text-sm" />
-                 <button className="p-2 border border-slate-700 rounded-lg hover:bg-slate-800">
-                    <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+                 <input placeholder="搜索插件..." className="flex-1 bg-black/30 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white" />
+                 <button 
+                    onClick={() => setShowPluginForm(true)}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-semibold flex items-center gap-2"
+                 >
+                    + 新增插件
                  </button>
               </div>
+              
+              {/* Add Plugin Form */}
+              {showPluginForm && (
+                  <div className="border border-indigo-500/50 bg-indigo-900/10 rounded-xl p-4 mb-6 animate-fade-in">
+                      <h4 className="text-indigo-300 font-bold mb-3">编写自定义插件</h4>
+                      <div className="space-y-3">
+                          <div>
+                              <label className="text-xs text-slate-400 block mb-1">插件名称</label>
+                              <input 
+                                value={newPlugin.name} 
+                                onChange={(e) => setNewPlugin({...newPlugin, name: e.target.value})}
+                                placeholder="例如: 情感分析专家" 
+                                className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-white text-sm"
+                              />
+                          </div>
+                          <div>
+                              <label className="text-xs text-slate-400 block mb-1">描述</label>
+                              <input 
+                                value={newPlugin.description} 
+                                onChange={(e) => setNewPlugin({...newPlugin, description: e.target.value})}
+                                placeholder="插件的功能简介..." 
+                                className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-white text-sm"
+                              />
+                          </div>
+                          <div>
+                              <label className="text-xs text-slate-400 block mb-1">System Prompt Addon (核心指令)</label>
+                              <textarea 
+                                value={newPlugin.systemPromptAddon} 
+                                onChange={(e) => setNewPlugin({...newPlugin, systemPromptAddon: e.target.value})}
+                                placeholder="Enter specific instructions to append to the system prompt..." 
+                                className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-white text-sm h-20"
+                              />
+                          </div>
+                          <div className="flex justify-end gap-2 mt-2">
+                              <button onClick={() => setShowPluginForm(false)} className="px-3 py-1 text-slate-400 hover:text-white text-sm">取消</button>
+                              <button onClick={handleAddPlugin} className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-sm">确认添加</button>
+                          </div>
+                      </div>
+                  </div>
+              )}
 
               <div className="flex gap-4 text-sm font-medium border-b border-slate-800 pb-2 mb-4">
                  <span className="text-emerald-500 border-b-2 border-emerald-500 pb-2">全部</span>
@@ -307,10 +369,13 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
               
               <div className="grid grid-cols-2 gap-4">
                  {config.plugins.map(plugin => (
-                   <div key={plugin.id} className="border border-slate-700 rounded-xl p-4 bg-slate-800/30 hover:border-slate-500 transition-colors">
+                   <div key={plugin.id} className={`border rounded-xl p-4 bg-slate-800/30 transition-colors ${plugin.active ? 'border-emerald-500/50' : 'border-slate-700 hover:border-slate-500'}`}>
                       <div className="flex justify-between mb-2">
                          <h3 className="font-bold text-white">{plugin.name}</h3>
-                         <span className="bg-blue-900 text-blue-300 text-xs px-2 py-0.5 rounded">Agent</span>
+                         <div className="flex gap-1">
+                             {plugin.isCustom && <span className="bg-indigo-900 text-indigo-300 text-xs px-2 py-0.5 rounded">Custom</span>}
+                             <span className="bg-blue-900 text-blue-300 text-xs px-2 py-0.5 rounded">Agent</span>
+                         </div>
                       </div>
                       <div className="flex gap-2 mb-3">
                         <span className="bg-slate-700 text-slate-400 text-xs px-2 py-0.5 rounded">ai-specialists</span>

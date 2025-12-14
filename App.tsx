@@ -6,6 +6,7 @@ import StepWorldReview from './components/StepWorldReview';
 import StepCharacters from './components/StepCharacters';
 import StepOutline from './components/StepOutline';
 import StepWriter from './components/StepWriter';
+import StepKnowledgeBase from './components/StepKnowledgeBase'; // Import the new component
 import StatusPanel from './components/StatusPanel';
 
 const INITIAL_PROJECT: ProjectState = {
@@ -41,10 +42,19 @@ const INITIAL_PROJECT: ProjectState = {
   characters: [],
   detailedOutline: '',
   chapters: [],
-  knowledgeBase: []
+  knowledgeBase: [],
+  knowledgeBaseFiles: [
+      { id: 'f-demo-1', name: '元决界·官方设定全书.docx', size: '344 KB', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', uploadDate: '12-08 21:34', status: 'indexed' }
+  ]
 };
 
-const STEPS = [
+// Define Main Navigation Groups
+const MAIN_NAV = [
+    { id: PipelineStep.KnowledgeBase, label: '小说知识库', icon: '📚' },
+    { id: PipelineStep.IdeaGeneration, label: '写小说', icon: '✍️' }, // Groups the pipeline
+];
+
+const PIPELINE_STEPS = [
   { id: PipelineStep.Configuration, label: '0. Agent 配置' },
   { id: PipelineStep.IdeaGeneration, label: '1. 灵感构思' },
   { id: PipelineStep.WorldReview, label: '2. 设定审查' },
@@ -82,6 +92,8 @@ export default function App() {
     switch (currentStep) {
       case PipelineStep.Configuration:
         return <StepConfiguration project={project} setProject={setProject} onNext={() => setCurrentStep(PipelineStep.IdeaGeneration)} />;
+      case PipelineStep.KnowledgeBase:
+        return <StepKnowledgeBase project={project} setProject={setProject} />;
       case PipelineStep.IdeaGeneration:
         return <StepIdea project={project} setProject={setProject} onNext={() => setCurrentStep(PipelineStep.WorldReview)} />;
       case PipelineStep.WorldReview:
@@ -127,6 +139,9 @@ export default function App() {
     );
   }
 
+  // Determine if we are in the "Writing Pipeline" mode to show the sub-steps
+  const isPipelineMode = currentStep >= 0;
+
   return (
     <div className="min-h-screen flex flex-col bg-[#0f172a] text-slate-200">
       {/* Header */}
@@ -144,25 +159,52 @@ export default function App() {
         {/* Sidebar Navigation */}
         <aside className="w-64 border-r border-slate-800 bg-[#1e293b]/30 flex flex-col hidden md:flex">
             <div className="p-4 flex-1 overflow-y-auto">
-                <div className="mb-4 px-2">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">创作流水线</p>
-                    {STEPS.map((step) => {
-                    const isActive = currentStep === step.id || (step.id === PipelineStep.Drafting && currentStep > PipelineStep.Drafting);
-                    return (
+                {/* Main Nav Items */}
+                <div className="space-y-1 mb-6">
+                    <button
+                        onClick={() => setCurrentStep(PipelineStep.Configuration)}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all flex items-center gap-2 ${currentStep === PipelineStep.Configuration ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}
+                    >
+                        ⚙️ 配置
+                    </button>
+                    {MAIN_NAV.map(nav => (
                         <button
-                            key={step.id}
-                            onClick={() => setCurrentStep(step.id)}
-                            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all mb-1 ${
-                                isActive 
-                                ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20' 
-                                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                            key={nav.id}
+                            onClick={() => setCurrentStep(nav.id)}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all flex items-center gap-2 ${
+                                (nav.id === PipelineStep.KnowledgeBase && currentStep === PipelineStep.KnowledgeBase) ||
+                                (nav.id === PipelineStep.IdeaGeneration && isPipelineMode)
+                                ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-800/50' 
+                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
                             }`}
                         >
-                            {step.label}
+                            <span>{nav.icon}</span> {nav.label}
                         </button>
-                    )
-                    })}
+                    ))}
                 </div>
+
+                {/* Pipeline Steps (Only show if in writing mode) */}
+                {isPipelineMode && (
+                    <div className="pl-4 border-l border-slate-800 ml-3 space-y-1">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 pl-2">创作流</p>
+                        {PIPELINE_STEPS.slice(1).map((step) => {
+                            const isActive = currentStep === step.id || (step.id === PipelineStep.Drafting && currentStep > PipelineStep.Drafting);
+                            return (
+                                <button
+                                    key={step.id}
+                                    onClick={() => setCurrentStep(step.id)}
+                                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs transition-all ${
+                                        isActive 
+                                        ? 'text-indigo-400 font-medium' 
+                                        : 'text-slate-500 hover:text-slate-300'
+                                    }`}
+                                >
+                                    {step.label}
+                                </button>
+                            )
+                        })}
+                    </div>
+                )}
             </div>
             
             {/* Status Panel Area */}
