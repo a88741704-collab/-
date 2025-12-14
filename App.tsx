@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { PipelineStep, ProjectState } from './types';
 import StepConfiguration, { AVAILABLE_PLUGINS } from './components/StepConfiguration';
@@ -6,9 +7,9 @@ import StepWorldReview from './components/StepWorldReview';
 import StepCharacters from './components/StepCharacters';
 import StepOutline from './components/StepOutline';
 import StepWriter from './components/StepWriter';
-import StepKnowledgeBase from './components/StepKnowledgeBase'; // Import the new component
+import StepKnowledgeBase from './components/StepKnowledgeBase'; 
 import StatusPanel from './components/StatusPanel';
-import { get, set } from 'idb-keyval'; // Import IndexedDB wrapper
+import { get, set } from 'idb-keyval'; 
 
 const INITIAL_RAG_ID = 'kb-default-01';
 const STORAGE_KEY = 'novel_craft_project_v1';
@@ -20,15 +21,15 @@ const INITIAL_PROJECT: ProjectState = {
     model: 'deepseek-reasoner',
     workDir: 'D:/Creative/Novel/Assets',
     description: 'Expert novel writing assistant specializing in plot twists and character depth.',
-    plugins: AVAILABLE_PLUGINS,
+    plugins: AVAILABLE_PLUGINS, // Uses the new structure from StepConfiguration
     customBaseUrl: 'https://api.deepseek.com',
-    customApiKey: '', // User must input
+    customApiKey: '', 
     ragConfigs: [
         {
             id: INITIAL_RAG_ID,
             enabled: true,
-            name: '小说文件库', // Renamed
-            embeddingModel: 'BAAI/bge-m3', // Default SiliconFlow model
+            name: '小说文件库', 
+            embeddingModel: 'BAAI/bge-m3', 
             embeddingDimension: 1024,
             topK: 15,
             rerankModel: 'BAAI/bge-reranker-v2-m3',
@@ -37,7 +38,7 @@ const INITIAL_PROJECT: ProjectState = {
             scoreThreshold: 0.7,
             useSeparateApi: true,
             ragBaseUrl: 'https://api.siliconflow.cn/v1',
-            ragApiKey: '', // User must input
+            ragApiKey: '', 
             vectorStore: 'local',
             vectorStoreCollection: 'novel_knowledge_base'
         }
@@ -57,7 +58,7 @@ const INITIAL_PROJECT: ProjectState = {
   ],
   chapters: [],
   knowledgeBase: [],
-  knowledgeBaseFiles: [], // Removed demo files
+  knowledgeBaseFiles: [], 
   quickPhrases: [
       "环境：月色如霜，洒在青石板路上，泛起惨白的光。",
       "动作：他眉头微皱，指尖轻轻敲击着桌面，似乎在权衡利弊。",
@@ -69,7 +70,7 @@ const INITIAL_PROJECT: ProjectState = {
 // Define Main Navigation Groups
 const MAIN_NAV = [
     { id: PipelineStep.KnowledgeBase, label: '小说知识库', icon: '📚' },
-    { id: PipelineStep.IdeaGeneration, label: '写小说', icon: '✍️' }, // Groups the pipeline
+    { id: PipelineStep.IdeaGeneration, label: '写小说', icon: '✍️' }, 
 ];
 
 const PIPELINE_STEPS = [
@@ -97,7 +98,23 @@ export default function App() {
         const savedProject = await get(STORAGE_KEY);
         if (savedProject) {
           // Merge with initial to ensure new schema fields exist if updated
-          setProject({ ...INITIAL_PROJECT, ...savedProject, agentStatus: 'idle', agentTask: '已恢复上次工作状态' });
+          // We must handle the potential migration of old plugin structure to new one here if this was a prod app
+          // For now, simple merge. If plugins are incompatible, fallback to INITIAL
+          const mergedPlugins = savedProject.agentConfig?.plugins?.[0]?.content 
+              ? savedProject.agentConfig.plugins 
+              : INITIAL_PROJECT.agentConfig.plugins;
+
+          setProject({ 
+              ...INITIAL_PROJECT, 
+              ...savedProject, 
+              agentConfig: {
+                  ...INITIAL_PROJECT.agentConfig,
+                  ...savedProject.agentConfig,
+                  plugins: mergedPlugins
+              },
+              agentStatus: 'idle', 
+              agentTask: '已恢复上次工作状态' 
+          });
         }
       } catch (e) {
         console.error("Failed to load project", e);
@@ -107,7 +124,6 @@ export default function App() {
     };
     loadData();
 
-    // Check for AISTUDIO key (Google specific)
     const checkKey = async () => {
       if (window.aistudio && window.aistudio.hasSelectedApiKey) {
         const selected = await window.aistudio.hasSelectedApiKey();
@@ -125,7 +141,7 @@ export default function App() {
       set(STORAGE_KEY, project)
         .then(() => setLastSaved(new Date()))
         .catch(err => console.error("Save failed", err));
-    }, 1000); // Save 1 second after last change
+    }, 1000); 
 
     return () => clearTimeout(timer);
   }, [project, isLoaded]);
@@ -163,10 +179,7 @@ export default function App() {
     }
   };
 
-  // Logic Update: Only show blocker if NO Google Key AND (Provider is Google OR Custom Key is missing)
   const isCustomConfigured = project.agentConfig.provider === 'custom' && !!project.agentConfig.customApiKey;
-  // If loaded, and we have custom config, don't block.
-  // Wait for load to finish before deciding to block to prevent flicker
   const showWelcomeBlocker = isLoaded && !hasKey && !isCustomConfigured && currentStep !== PipelineStep.Configuration;
 
   if (!isLoaded) {
@@ -206,15 +219,11 @@ export default function App() {
     );
   }
 
-  // Determine if we are in the "Writing Pipeline" mode to show the sub-steps
   const isPipelineMode = currentStep >= 0;
-  
-  // Calculate active KBs
   const activeKbsCount = project.agentConfig.ragConfigs?.filter(r => r.enabled).length || 0;
 
   return (
     <div className="min-h-screen flex flex-col bg-[#0f172a] text-slate-200">
-      {/* Header */}
       <header className="h-16 border-b border-slate-800 bg-[#0f172a]/80 backdrop-blur fixed w-full top-0 z-50 flex items-center px-6 justify-between shadow-sm">
         <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/30">N</div>
@@ -240,10 +249,8 @@ export default function App() {
       </header>
 
       <div className="flex flex-1 pt-16 h-screen overflow-hidden">
-        {/* Sidebar Navigation */}
         <aside className="w-64 border-r border-slate-800 bg-[#151b28] flex flex-col hidden md:flex z-40">
             <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
-                {/* Main Nav Items */}
                 <div className="space-y-1 mb-6">
                     <button
                         onClick={() => setCurrentStep(PipelineStep.Configuration)}
@@ -267,12 +274,9 @@ export default function App() {
                     ))}
                 </div>
 
-                {/* Pipeline Steps (Only show if in writing mode) */}
                 {isPipelineMode && (
                     <div className="ml-2 pl-3 border-l border-slate-800 space-y-1 relative">
-                        {/* Connecting Line Adjustment */}
                         <div className="absolute -left-[1px] top-0 bottom-0 w-[1px] bg-slate-800"></div>
-                        
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 pl-2">Creation Pipeline</p>
                         {PIPELINE_STEPS.slice(1).map((step, idx) => {
                             const isActive = currentStep === step.id || (step.id === PipelineStep.Drafting && currentStep > PipelineStep.Drafting);
@@ -299,7 +303,6 @@ export default function App() {
                 )}
             </div>
             
-            {/* Status Panel Area */}
             <div className="p-4 border-t border-slate-800 bg-[#0f1219]">
                 <StatusPanel status={project.agentStatus} task={project.agentTask} />
                 <div className="mt-3 flex justify-between items-center text-[10px] text-slate-500 font-mono">
@@ -309,7 +312,6 @@ export default function App() {
             </div>
         </aside>
 
-        {/* Main Content */}
         <main className="flex-1 p-6 overflow-hidden relative bg-gradient-to-br from-[#0f172a] to-[#1e293b]">
             {renderStep()}
         </main>

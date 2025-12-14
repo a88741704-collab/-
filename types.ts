@@ -1,3 +1,4 @@
+
 export enum PipelineStep {
   Configuration = -1, // New Agent Setup Step
   KnowledgeBase = -2, // Knowledge Base Management
@@ -13,10 +14,18 @@ export enum PipelineStep {
 export interface AgentPlugin {
   id: string;
   name: string;
+  type: 'agent' | 'tool';
+  tags: string[];
   description: string;
+  tools: string[]; // e.g. ['Read', 'Write', 'WebSearch', 'Grep']
   active: boolean;
-  systemPromptAddon: string;
-  isCustom?: boolean; // Flag for user-created plugins
+  content: string; // The system prompt content
+  
+  // Metadata for UI
+  fileName: string;
+  sourcePath: string;
+  fileSize?: string;
+  isCustom?: boolean; 
 }
 
 export interface RAGConfig {

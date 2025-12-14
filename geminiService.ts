@@ -307,7 +307,7 @@ const getSystemInstruction = (config?: AgentConfig) => {
 
     const activePlugins = config.plugins.filter(p => p.active);
     if (activePlugins.length > 0) {
-      base += `\n【已启用插件/技能】\n${activePlugins.map(p => `- ${p.name}: ${p.systemPromptAddon}`).join('\n')}`;
+      base += `\n【已启用插件/技能】\n${activePlugins.map(p => `- ${p.name}: ${p.content}`).join('\n')}`;
     }
   }
   return base;
