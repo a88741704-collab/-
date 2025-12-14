@@ -103,6 +103,7 @@ export interface ProjectState {
   currentChapterId?: string;
   knowledgeBase: string[];
   knowledgeBaseFiles: KnowledgeFile[];
+  quickPhrases: string[]; // New: List of saved snippets
 }
 
 export type AIModelType = 'text-fast' | 'text-reasoning' | 'image' | 'video';

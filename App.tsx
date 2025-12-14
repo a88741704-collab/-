@@ -45,6 +45,12 @@ const INITIAL_PROJECT: ProjectState = {
   knowledgeBase: [],
   knowledgeBaseFiles: [
       { id: 'f-demo-1', name: '元决界·官方设定全书.docx', size: '344 KB', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', uploadDate: '12-08 21:34', status: 'indexed' }
+  ],
+  quickPhrases: [
+      "环境：月色如霜，洒在青石板路上，泛起惨白的光。",
+      "动作：他眉头微皱，指尖轻轻敲击着桌面，似乎在权衡利弊。",
+      "战斗：剑光如虹，瞬息间已刺出三剑，封死了对方所有退路。",
+      "心理：一种莫名的恐惧如同潮水般涌上心头，令他几乎窒息。"
   ]
 };
 
