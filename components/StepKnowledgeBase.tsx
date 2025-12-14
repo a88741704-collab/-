@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ProjectState, KnowledgeFile, RAGConfig } from '../types';
+import { ProjectState, KnowledgeFile, RAGConfig, TextChunk } from '../types';
 import RagSettingsModal from './RagSettingsModal';
 
 interface Props {
@@ -9,10 +9,13 @@ interface Props {
 
 interface SearchResult {
     id: string;
-    text: string;
+    text: string; // The chunk text
     source: string;
     score: number;
+    chunkIndex: number; // To show which chunk matched
 }
+
+// --- Real RAG Utilities ---
 
 // Helper to read file as text
 const readFileAsText = (file: File): Promise<string> => {
@@ -20,14 +23,68 @@ const readFileAsText = (file: File): Promise<string> => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target?.result as string);
         reader.onerror = (e) => reject(e);
-        // Only attempt to read text-ish files
         if (file.type.match(/text.*/) || file.name.endsWith('.md') || file.name.endsWith('.json') || file.name.endsWith('.txt')) {
              reader.readAsText(file);
         } else {
-             // For binary files (pdf/doc) in this frontend-only demo, we can't easily parse them.
              resolve(`[Binary content of ${file.name} cannot be previewed in this local demo]`);
         }
     });
+};
+
+// Recursive Character Text Splitter Simulation
+// Splits by double newline, then newline, then space to respect chunk size
+const recursiveSplitText = (text: string, chunkSize: number, chunkOverlap: number): TextChunk[] => {
+    const chunks: TextChunk[] = [];
+    if (!text) return chunks;
+
+    let startIndex = 0;
+    while (startIndex < text.length) {
+        let endIndex = startIndex + chunkSize;
+        
+        // If we are not at the end, try to find a nice break point
+        if (endIndex < text.length) {
+            // Priority 1: Double newline (Paragraph)
+            const doubleNewlineIndex = text.lastIndexOf('\n\n', endIndex);
+            // Priority 2: Newline
+            const newlineIndex = text.lastIndexOf('\n', endIndex);
+            // Priority 3: Space
+            const spaceIndex = text.lastIndexOf(' ', endIndex);
+
+            // Determine best break point, ensuring we progress at least a bit to avoid infinite loops
+            // Only back up if the break point is reasonably close to the limit (e.g. within last 25%)
+            // otherwise we might cut too short.
+            const minProgress = Math.floor(chunkSize * 0.5);
+            
+            if (doubleNewlineIndex > startIndex + minProgress) {
+                endIndex = doubleNewlineIndex + 2; // Include the newlines
+            } else if (newlineIndex > startIndex + minProgress) {
+                endIndex = newlineIndex + 1;
+            } else if (spaceIndex > startIndex + minProgress) {
+                endIndex = spaceIndex + 1;
+            }
+            // Fallback: Hard cut at chunk size
+        } else {
+            endIndex = text.length;
+        }
+
+        const chunkText = text.substring(startIndex, endIndex);
+        chunks.push({
+            id: `chk-${Date.now()}-${chunks.length}`,
+            text: chunkText.trim(),
+            startIndex: startIndex,
+            endIndex: endIndex
+        });
+
+        // Move start index for next chunk, backing up by overlap
+        // But never back up past current start (infinite loop protection)
+        const nextStart = endIndex - chunkOverlap;
+        startIndex = Math.max(startIndex + 1, nextStart);
+        
+        // Optimization: If we reached end, break
+        if (endIndex >= text.length) break;
+    }
+
+    return chunks;
 };
 
 const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
@@ -49,14 +106,15 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
 
   // Search Test State
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [allSearchResults, setAllSearchResults] = useState<SearchResult[]>([]);
+  const [visibleResultsCount, setVisibleResultsCount] = useState(10); // Pagination control
   const [isSearching, setIsSearching] = useState(false);
   const [searchMeta, setSearchMeta] = useState({ time: 0, tokens: 0, reqId: '' });
 
-  // Search Settings State (Visual only for simulation)
+  // Search Settings State
   const [recallMethod, setRecallMethod] = useState<'hybrid' | 'vector' | 'keyword'>('hybrid');
   const [vectorRatio, setVectorRatio] = useState(0.8);
-  const [topK, setTopK] = useState(8);
+  const [topK, setTopK] = useState(activeKb?.topK || 20); // Retrieve more candidates, display paginated
   const [minScore, setMinScore] = useState(0.5);
   const [enableRerank, setEnableRerank] = useState(false);
 
@@ -77,7 +135,9 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           name: 'New Knowledge Base',
           embeddingModel: 'BAAI/bge-large-zh-v1.5',
           embeddingDimension: 1024,
-          topK: 10,
+          topK: 20,
+          chunkSize: 512,
+          chunkOverlap: 64,
           useSeparateApi: false,
           vectorStore: 'local',
           vectorStoreCollection: 'new_collection'
@@ -117,12 +177,12 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
     }
   };
 
-  // --- Handlers for Files ---
+  // --- Handlers for Files (Now with Real Chunking) ---
 
   const processFile = async (file: File) => {
-      if (!selectedKbId) return;
+      if (!selectedKbId || !activeKb) return;
 
-      // 1. Read File Content Real-time
+      // 1. Read File Content
       let content = '';
       try {
           content = await readFileAsText(file);
@@ -131,7 +191,12 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           content = "Read Error";
       }
 
-      // 2. Create Entry
+      // 2. Perform Real Slicing
+      const chunkSize = activeKb.chunkSize || 512;
+      const chunkOverlap = activeKb.chunkOverlap || 64;
+      const chunks = recursiveSplitText(content, chunkSize, chunkOverlap);
+
+      // 3. Create Entry
       const newFile: KnowledgeFile = {
           id: `f-${Date.now()}-${Math.random().toString(36).substr(2,5)}`,
           kbId: selectedKbId,
@@ -141,8 +206,9 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           uploadDate: new Date().toLocaleTimeString(),
           status: 'processing',
           progress: 0,
-          totalChunks: 0,
-          content: content // Store real content
+          totalChunks: chunks.length,
+          content: content,
+          chunks: chunks // Store the sliced chunks
       };
 
       setProject(prev => ({
@@ -150,29 +216,26 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           knowledgeBaseFiles: [...(prev.knowledgeBaseFiles || []), newFile]
       }));
 
-      // Simulate Processing
-      const chunkSize = activeKb?.chunkSize || 512;
-      const estimatedChunks = Math.max(1, Math.ceil(file.size / chunkSize));
-      const processingSpeed = 20; 
+      // Simulate Embedding Progress (We already have chunks, but simulating vectorization time)
+      const processingSpeed = 10; 
       const updateInterval = 200;
-      const chunksPerTick = Math.max(1, Math.ceil(processingSpeed * (updateInterval / 1000)));
-
-      let processedChunks = 0;
+      const totalSteps = 100 / processingSpeed * 5; 
+      
+      let steps = 0;
       const timer = setInterval(() => {
-          processedChunks += chunksPerTick;
-          const rawProgress = (processedChunks / estimatedChunks) * 100;
-          const progress = Math.min(99, rawProgress);
+          steps++;
+          const progress = Math.min(99, (steps / totalSteps) * 100);
 
           setProject(prev => ({
               ...prev,
               knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => 
                   f.id === newFile.id 
-                  ? { ...f, progress: progress, totalChunks: estimatedChunks } 
+                  ? { ...f, progress: progress } 
                   : f
               )
           }));
 
-          if (processedChunks >= estimatedChunks) {
+          if (progress >= 99) {
               clearInterval(timer);
               setTimeout(() => {
                   setProject(prev => ({
@@ -183,7 +246,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                           : f
                       )
                   }));
-              }, 600);
+              }, 500);
           }
       }, updateInterval);
   };
@@ -212,17 +275,21 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
   };
 
   const handleReindex = (id: string) => {
-      if (reindexingId) return;
+      if (reindexingId || !activeKb) return;
       setReindexingId(id);
       
       const targetFile = project.knowledgeBaseFiles.find(f => f.id === id);
-      const estSize = targetFile ? parseInt(targetFile.size) * 1024 : 10000;
-      const estChunks = Math.ceil(estSize / 512);
+      if(!targetFile || !targetFile.content) return;
+
+      // Re-slice (in case settings changed)
+      const chunkSize = activeKb.chunkSize || 512;
+      const chunkOverlap = activeKb.chunkOverlap || 64;
+      const chunks = recursiveSplitText(targetFile.content, chunkSize, chunkOverlap);
 
       setProject(prev => ({
           ...prev,
           knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => 
-             f.id === id ? { ...f, status: 'processing', progress: 0 } : f
+             f.id === id ? { ...f, status: 'processing', progress: 0, totalChunks: chunks.length, chunks: chunks } : f
           )
       }));
 
@@ -260,7 +327,12 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
 
   // --- Handlers for Notes & URLs ---
   const handleAddNote = () => {
-      if(!newNote.trim() || !selectedKbId) return;
+      if(!newNote.trim() || !selectedKbId || !activeKb) return;
+      
+      const content = newNote;
+      const chunkSize = activeKb.chunkSize || 512;
+      const chunks = recursiveSplitText(content, chunkSize, activeKb.chunkOverlap || 64);
+
       const noteFile: KnowledgeFile = {
           id: `n-${Date.now()}`,
           kbId: selectedKbId,
@@ -270,14 +342,23 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           uploadDate: new Date().toLocaleTimeString(),
           status: 'indexed',
           progress: 100,
-          content: newNote // Store content
+          totalChunks: chunks.length,
+          content: content,
+          chunks: chunks
       };
       setProject(prev => ({ ...prev, knowledgeBaseFiles: [...prev.knowledgeBaseFiles, noteFile] }));
       setNewNote('');
   };
 
   const handleAddUrl = () => {
-      if(!newUrl.trim() || !selectedKbId) return;
+      // Simulation of URL crawling
+      if(!newUrl.trim() || !selectedKbId || !activeKb) return;
+      
+      const simulatedContent = `[Simulated Crawl of ${newUrl}]\n\nNovel writing is an art form that requires patience, skill, and a touch of madness. The structure of a novel usually follows the three-act structure. \n\nCharacters must have flaws. A perfect character is boring. Give them internal conflict. The setting should be a character in itself.`;
+      
+      const chunkSize = activeKb.chunkSize || 512;
+      const chunks = recursiveSplitText(simulatedContent, chunkSize, activeKb.chunkOverlap || 64);
+
       const urlFile: KnowledgeFile = {
           id: `u-${Date.now()}`,
           kbId: selectedKbId,
@@ -287,14 +368,16 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           uploadDate: new Date().toLocaleTimeString(),
           status: 'processing',
           progress: 0,
-          content: `Simulated crawled content for ${newUrl}. This would contain text from the webpage.`
+          totalChunks: chunks.length,
+          content: simulatedContent,
+          chunks: chunks
       };
       setProject(prev => ({ ...prev, knowledgeBaseFiles: [...prev.knowledgeBaseFiles, urlFile] }));
       setNewUrl('');
       
       let p = 0;
       const interval = setInterval(() => {
-          p += 5;
+          p += 10;
           setProject(prev => ({
               ...prev,
               knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => f.id === urlFile.id ? { ...f, progress: p } : f)
@@ -320,92 +403,85 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
       setShowSettings(false);
   };
 
-  // --- Real Search Implementation ---
+  // --- Real Search Implementation (Chunk-based) ---
   const performSearch = () => {
       if (!searchQuery.trim()) return;
       setIsSearching(true);
-      setSearchResults([]);
+      setAllSearchResults([]); // Clear previous
+      setVisibleResultsCount(10); // Reset pagination
+
       const startTime = performance.now();
       
-      // Simulation delay
+      // Simulation delay for "network/processing" feel
       setTimeout(() => {
           const currentFiles = project.knowledgeBaseFiles.filter(f => f.kbId === selectedKbId);
           const results: SearchResult[] = [];
           
+          const lowerQuery = searchQuery.toLowerCase();
+          const queryTerms = lowerQuery.split(/\s+/).filter(t => t.length > 0);
+
           currentFiles.forEach(file => {
-             if (!file.content) return;
-             
-             const lowerContent = file.content.toLowerCase();
-             const lowerQuery = searchQuery.toLowerCase();
-             
-             // --- Search Simulation Logic ---
-             let score = 0;
-             let snippet = "";
-             let matchIndex = -1;
+             // We search inside CHUNKS now, not the whole content
+             if (!file.chunks) return;
 
-             // 1. Keyword Exact Match Score
-             if (lowerContent.includes(lowerQuery)) {
-                 score += 0.6; // Base score for exact match
-                 matchIndex = lowerContent.indexOf(lowerQuery);
-             }
+             file.chunks.forEach((chunk, index) => {
+                 const lowerChunkText = chunk.text.toLowerCase();
+                 let score = 0;
 
-             // 2. Vector Simulation (Keyword Density / Partial Match)
-             const queryTerms = lowerQuery.split(/\s+/).filter(t => t.length > 0);
-             let termMatches = 0;
-             queryTerms.forEach(term => {
-                 if (lowerContent.includes(term)) termMatches++;
-             });
-             if (queryTerms.length > 0) {
-                 score += (termMatches / queryTerms.length) * 0.4;
-             }
-
-             // Adjust Score based on Recall Method Settings
-             if (recallMethod === 'keyword' && matchIndex === -1) score = 0;
-             if (recallMethod === 'vector') {
-                 // Fuzz the score to simulate vector similarity even without exact match
-                 if (score === 0 && termMatches > 0) score = 0.4 + Math.random() * 0.2;
-             }
-
-             // Apply Threshold
-             if (score >= minScore) {
-                 // Rerank Simulation (Boost score slightly randomly if enabled)
-                 if (enableRerank) score = Math.min(0.99, score + Math.random() * 0.1);
-
-                 // Snippet Extraction
-                 // Prefer exact match location, otherwise find first term location
-                 if (matchIndex === -1 && termMatches > 0) {
-                     matchIndex = lowerContent.indexOf(queryTerms.find(t => lowerContent.includes(t)) || '');
+                 // 1. Exact Phrase Match
+                 if (lowerChunkText.includes(lowerQuery)) {
+                     score += 0.5; 
                  }
 
-                 const start = Math.max(0, matchIndex - 60);
-                 const end = Math.min(file.content.length, matchIndex + 200);
-                 snippet = file.content.substring(start, end);
-                 // Clean up newlines for display
-                 snippet = snippet.replace(/\n/g, ' '); 
-                 if (start > 0) snippet = "..." + snippet;
-                 if (end < file.content.length) snippet = snippet + "...";
-
-                 results.push({
-                     id: `res-${file.id}`,
-                     text: snippet,
-                     source: file.name,
-                     score: score
+                 // 2. Term Density (Vector Similarity Sim)
+                 let termMatches = 0;
+                 queryTerms.forEach(term => {
+                     // Simple frequency count
+                     const matches = lowerChunkText.split(term).length - 1;
+                     if (matches > 0) termMatches += 1 + (matches * 0.1);
                  });
-             }
+                 
+                 if (queryTerms.length > 0) {
+                     score += (termMatches / (queryTerms.length * 2)) * 0.5; // Normalized
+                 }
+
+                 // Recall Method Adjustments
+                 if (recallMethod === 'keyword' && !lowerChunkText.includes(lowerQuery)) score = 0;
+                 if (recallMethod === 'vector') {
+                     // Add some noise if score > 0 to simulate vector drift
+                     if (score > 0) score += (Math.random() * 0.05);
+                 }
+
+                 if (score >= minScore) {
+                     if (enableRerank) score = Math.min(0.99, score + (Math.random() * 0.1));
+                     
+                     results.push({
+                         id: `res-${file.id}-${chunk.id}`,
+                         text: chunk.text, // Return ACTUAL sliced chunk
+                         source: file.name,
+                         score: score,
+                         chunkIndex: index
+                     });
+                 }
+             });
           });
 
           // Sort by score
-          const sorted = results.sort((a,b) => b.score - a.score).slice(0, topK);
+          const sorted = results.sort((a,b) => b.score - a.score);
           
-          setSearchResults(sorted);
+          setAllSearchResults(sorted);
           const endTime = performance.now();
           setSearchMeta({
               time: (endTime - startTime) / 1000,
               tokens: searchQuery.length + sorted.reduce((acc, r) => acc + r.text.length, 0),
-              reqId: `req-${Math.random().toString(16).substr(2, 8)}-${Math.random().toString(16).substr(2, 4)}`
+              reqId: `req-${Math.random().toString(16).substr(2, 8)}`
           });
           setIsSearching(false);
-      }, 500);
+      }, 600);
+  };
+
+  const handleLoadMore = () => {
+      setVisibleResultsCount(prev => prev + 10);
   };
 
   // Highlight helper
@@ -438,6 +514,9 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
       if (activeTab === 'urls') return f.type.includes('html');
       return false;
   });
+
+  // Derived visible results
+  const visibleResults = allSearchResults.slice(0, visibleResultsCount);
 
   return (
     <div className="flex h-full animate-fade-in gap-4">
@@ -511,6 +590,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                        </h2>
                        <div className="flex gap-4 text-xs text-slate-400">
                            <span className="flex items-center gap-1">Model: <span className="text-emerald-400">{activeKb.embeddingModel}</span></span>
+                           <span className="flex items-center gap-1">Chunk Size: <span className="text-indigo-400">{activeKb.chunkSize || 512}</span></span>
                        </div>
                    </div>
                    <button 
@@ -562,7 +642,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                    <div className="flex h-full">
                        {/* Left: Search Area */}
                        <div className="flex-1 flex flex-col p-6 border-r border-slate-700 overflow-hidden">
-                           <div className="text-center mb-8 mt-4">
+                           <div className="text-center mb-6 mt-2">
                                <h1 className="text-2xl font-bold text-white mb-6 tracking-tight">知识检索</h1>
                                <div className="relative max-w-2xl mx-auto">
                                    <input 
@@ -584,18 +664,18 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                            <div className="flex-1 overflow-hidden flex flex-col max-w-4xl mx-auto w-full">
                                {/* Result Header */}
                                <div className="flex items-center gap-4 text-xs text-slate-500 mb-4 px-2 font-mono">
-                                   <span>检索结果</span>
-                                   {searchResults.length > 0 && (
+                                   <span>检索结果: {allSearchResults.length} 个</span>
+                                   {allSearchResults.length > 0 && (
                                        <>
                                            <span className="border-l border-slate-700 pl-4">单次检索耗时 {searchMeta.time.toFixed(3)} s</span>
-                                           <span className="border-l border-slate-700 pl-4">Token消耗 {searchMeta.tokens} tokens</span>
-                                           <span className="border-l border-slate-700 pl-4 truncate max-w-[200px]">request ID {searchMeta.reqId}</span>
+                                           <span className="border-l border-slate-700 pl-4">Token消耗 {searchMeta.tokens}</span>
+                                           <span className="border-l border-slate-700 pl-4 truncate max-w-[150px]">ID {searchMeta.reqId}</span>
                                        </>
                                    )}
                                </div>
 
                                {/* Results List */}
-                               <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4 pb-10">
+                               <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4 pb-4">
                                    {isSearching ? (
                                        <div className="space-y-4">
                                            {[1,2,3].map(i => (
@@ -606,21 +686,38 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                                                </div>
                                            ))}
                                        </div>
-                                   ) : searchResults.length > 0 ? (
-                                       searchResults.map((res, idx) => (
-                                           <div key={res.id} className="bg-transparent hover:bg-slate-800/30 p-4 rounded-lg transition-colors border-b border-slate-800/50 last:border-0">
-                                               <div className="flex justify-between items-start mb-2">
-                                                   <h4 className="text-sm font-bold text-slate-200">{idx + 1}. {res.source}</h4>
-                                                   <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded">Score: {res.score.toFixed(4)}</span>
+                                   ) : visibleResults.length > 0 ? (
+                                       <>
+                                           {visibleResults.map((res, idx) => (
+                                               <div key={res.id} className="bg-transparent hover:bg-slate-800/30 p-4 rounded-lg transition-colors border-b border-slate-800/50 last:border-0 group">
+                                                   <div className="flex justify-between items-start mb-2">
+                                                       <div className="flex items-center gap-2">
+                                                            <h4 className="text-sm font-bold text-slate-200">{idx + 1}. {res.source}</h4>
+                                                            <span className="text-[10px] text-slate-500 font-mono bg-slate-900 px-1 rounded">Chunk #{res.chunkIndex}</span>
+                                                       </div>
+                                                       <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">Score: {res.score.toFixed(4)}</span>
+                                                   </div>
+                                                   <div className="text-sm text-slate-300 leading-relaxed font-serif whitespace-pre-line">
+                                                       <HighlightedText text={res.text} query={searchQuery} />
+                                                   </div>
                                                </div>
-                                               <div className="text-sm text-slate-300 leading-relaxed font-serif whitespace-pre-line">
-                                                   <HighlightedText text={res.text} query={searchQuery} />
+                                           ))}
+
+                                           {/* LOAD MORE BUTTON */}
+                                           {visibleResultsCount < allSearchResults.length && (
+                                               <div className="pt-2 pb-4 text-center">
+                                                   <button 
+                                                       onClick={handleLoadMore}
+                                                       className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-full text-xs font-bold transition-all border border-slate-600 shadow-lg"
+                                                   >
+                                                       ↓ Load More ({allSearchResults.length - visibleResultsCount} remaining)
+                                                   </button>
                                                </div>
-                                           </div>
-                                       ))
+                                           )}
+                                       </>
                                    ) : (
                                        <div className="text-center text-slate-500 py-10">
-                                           {searchQuery ? "未找到相关内容 (No results found)" : "请输入关键词开始检索"}
+                                           {searchQuery ? "未找到相关切片 (No chunks matched)" : "请输入关键词开始检索"}
                                        </div>
                                    )}
                                </div>
@@ -704,14 +801,15 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
 
                                    <div>
                                        <div className="flex justify-between text-sm text-slate-600 mb-2">
-                                           <span>召回数量 ⓘ</span>
+                                           <span>召回数量 (Candidates) ⓘ</span>
                                            <span className="border border-slate-200 px-2 rounded bg-white text-xs py-0.5">{topK}</span>
                                        </div>
                                        <input 
-                                          type="range" min="1" max="20" 
+                                          type="range" min="10" max="100" 
                                           value={topK} onChange={(e) => setTopK(parseInt(e.target.value))}
                                           className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                                        />
+                                       <div className="text-[10px] text-slate-400 mt-1 text-right">Visible: {visibleResultsCount}</div>
                                    </div>
 
                                    <div>
@@ -809,7 +907,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                                                 </div>
                                                 <div>
                                                     <h4 className="text-slate-200 text-sm font-medium line-clamp-1">{file.name}</h4>
-                                                    <p className="text-xs text-slate-500">{file.uploadDate} · {file.size}</p>
+                                                    <p className="text-xs text-slate-500">{file.uploadDate} · {file.size} · {file.totalChunks || 0} Chunks</p>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-3">

@@ -92,6 +92,13 @@ export interface Chapter {
   animationUrl?: string;
 }
 
+export interface TextChunk {
+  id: string;
+  text: string;
+  startIndex: number;
+  endIndex: number;
+}
+
 export interface KnowledgeFile {
   id: string;
   kbId: string; // Link to specific RAGConfig ID
@@ -102,7 +109,8 @@ export interface KnowledgeFile {
   status: 'indexed' | 'processing' | 'error';
   progress?: number; // 0-100 percentage
   totalChunks?: number; // Estimated chunks for display
-  content?: string; // Actual text content for local search simulation
+  content?: string; // Actual text content
+  chunks?: TextChunk[]; // Real RAG chunks
 }
 
 export type AgentStatus = 'idle' | 'thinking' | 'generating' | 'error';
