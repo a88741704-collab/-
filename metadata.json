@@ -1,0 +1,5 @@
+{
+  "name": "NovelCraft AI Pipeline",
+  "description": "An AI-powered creative pipeline for novelists. From inspiration to outline, drafting, critique, and visual adaptation (comic/animation) using Google Gemini models.",
+  "requestFramePermissions": []
+}
