@@ -192,8 +192,8 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
       }
 
       // 2. Perform Real Slicing
-      const chunkSize = activeKb.chunkSize || 512;
-      const chunkOverlap = activeKb.chunkOverlap || 64;
+      const chunkSize = activeKb.chunkSize ?? 512;
+      const chunkOverlap = activeKb.chunkOverlap ?? 64;
       const chunks = recursiveSplitText(content, chunkSize, chunkOverlap);
 
       // 3. Create Entry
@@ -282,8 +282,8 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
       if(!targetFile || !targetFile.content) return;
 
       // Re-slice (in case settings changed)
-      const chunkSize = activeKb.chunkSize || 512;
-      const chunkOverlap = activeKb.chunkOverlap || 64;
+      const chunkSize = activeKb.chunkSize ?? 512;
+      const chunkOverlap = activeKb.chunkOverlap ?? 64;
       const chunks = recursiveSplitText(targetFile.content, chunkSize, chunkOverlap);
 
       setProject(prev => ({
@@ -330,8 +330,8 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
       if(!newNote.trim() || !selectedKbId || !activeKb) return;
       
       const content = newNote;
-      const chunkSize = activeKb.chunkSize || 512;
-      const chunks = recursiveSplitText(content, chunkSize, activeKb.chunkOverlap || 64);
+      const chunkSize = activeKb.chunkSize ?? 512;
+      const chunks = recursiveSplitText(content, chunkSize, activeKb.chunkOverlap ?? 64);
 
       const noteFile: KnowledgeFile = {
           id: `n-${Date.now()}`,
@@ -356,8 +356,8 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
       
       const simulatedContent = `[Simulated Crawl of ${newUrl}]\n\nNovel writing is an art form that requires patience, skill, and a touch of madness. The structure of a novel usually follows the three-act structure. \n\nCharacters must have flaws. A perfect character is boring. Give them internal conflict. The setting should be a character in itself.`;
       
-      const chunkSize = activeKb.chunkSize || 512;
-      const chunks = recursiveSplitText(simulatedContent, chunkSize, activeKb.chunkOverlap || 64);
+      const chunkSize = activeKb.chunkSize ?? 512;
+      const chunks = recursiveSplitText(simulatedContent, chunkSize, activeKb.chunkOverlap ?? 64);
 
       const urlFile: KnowledgeFile = {
           id: `u-${Date.now()}`,
