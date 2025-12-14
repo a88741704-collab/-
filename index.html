@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NovelCraft AI Pipeline</title>
+    <!-- Note: For full offline CSS, you would eventually install Tailwind via PostCSS. 
+         Keeping CDN for simplicity in this specific setup, but it requires internet for styles. 
+         Logic and data will work offline. -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Merriweather:ital,wght@0,300;0,400;0,700;1,400&display=swap');
@@ -36,30 +39,27 @@
         border: 1px solid rgba(255, 255, 255, 0.1);
       }
     </style>
-  <script type="importmap">
+    <script>
+        // Polyfill to prevent crashes if process is accessed directly in some libs
+        window.process = { env: { NODE_ENV: 'development' } };
+    </script>
+<script type="importmap">
 {
   "imports": {
-    "@google/genai": "https://esm.sh/@google/genai@^1.33.0",
-    "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "mammoth": "https://esm.sh/mammoth@1.8.0",
-    "idb-keyval": "https://esm.sh/idb-keyval@6.2.1"
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.33.0",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "vite": "https://esm.sh/vite@^7.2.7",
+    "idb-keyval": "https://esm.sh/idb-keyval@^6.2.2",
+    "mammoth": "https://esm.sh/mammoth@^1.11.0"
   }
 }
-</script>
-<script>
-  // Polyfill for process.env to prevent "process is not defined" errors in browser
-  window.process = {
-    env: {
-      NODE_ENV: 'production',
-      API_KEY: '' // Prevent crash, actual key handling is done in code
-    }
-  };
 </script>
 </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="./index.tsx"></script>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
