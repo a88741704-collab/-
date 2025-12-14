@@ -209,7 +209,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                         </div>
                         
                         <div>
-                           <label className="text-xs text-slate-500 mb-2 block uppercase tracking-wider">模型 ID (Model Name)</label>
+                           <label className="text-xs text-slate-500 mb-2 block uppercase tracking-wider">Model ID</label>
                            <input 
                               placeholder="deepseek-reasoner" 
                               value={config.model}
