@@ -98,7 +98,7 @@ const StepChat: React.FC<Props> = ({ project, setProject, onNext }) => {
                      <div className="flex justify-between items-center px-2 pb-1 text-slate-500">
                          <div className="flex gap-2">
                              <button className="hover:text-emerald-400 p-1" title="上传文件">➕</button>
-                             <button className="hover:text-emerald-400 p-1" title="命令">></button>
+                             <button className="hover:text-emerald-400 p-1" title="命令">/</button>
                              <button onClick={() => setExpandedDirectory(!expandedDirectory)} className={`hover:text-emerald-400 p-1 ${expandedDirectory ? 'text-emerald-400' : ''}`} title="活动目录">📂</button>
                          </div>
                          <button onClick={handleSend} className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded text-xs">发送</button>
