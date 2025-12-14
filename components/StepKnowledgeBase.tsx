@@ -14,6 +14,23 @@ interface SearchResult {
     score: number;
 }
 
+// Helper to read file as text
+const readFileAsText = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.onerror = (e) => reject(e);
+        // Only attempt to read text-ish files
+        if (file.type.match(/text.*/) || file.name.endsWith('.md') || file.name.endsWith('.json') || file.name.endsWith('.txt')) {
+             reader.readAsText(file);
+        } else {
+             // For binary files (pdf/doc) in this frontend-only demo, we can't easily parse them.
+             // We'll return a placeholder to indicate this limitation.
+             resolve(`[Binary content of ${file.name} cannot be previewed in this local demo]`);
+        }
+    });
+};
+
 const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
   const { ragConfigs } = project.agentConfig;
   
@@ -95,11 +112,21 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
 
   // --- Handlers for Files ---
 
-  const processFile = (file: File) => {
+  const processFile = async (file: File) => {
       if (!selectedKbId) return;
-      
+
+      // 1. Read File Content Real-time
+      let content = '';
+      try {
+          content = await readFileAsText(file);
+      } catch (e) {
+          console.error("Failed to read file", e);
+          content = "Read Error";
+      }
+
+      // 2. Create Entry
       const newFile: KnowledgeFile = {
-          id: `f-${Date.now()}`,
+          id: `f-${Date.now()}-${Math.random().toString(36).substr(2,5)}`,
           kbId: selectedKbId,
           name: file.name,
           size: `${(file.size / 1024).toFixed(1)} KB`,
@@ -107,7 +134,8 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           uploadDate: new Date().toLocaleTimeString(),
           status: 'processing',
           progress: 0,
-          totalChunks: 0
+          totalChunks: 0,
+          content: content // Store real content
       };
 
       setProject(prev => ({
@@ -162,7 +190,9 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
   const handleDrop = (e: React.DragEvent) => {
       e.preventDefault(); e.stopPropagation();
       setDragActive(false);
-      if (e.dataTransfer.files && e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          Array.from(e.dataTransfer.files).forEach(f => processFile(f));
+      }
   };
   
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -232,7 +262,8 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           type: 'application/x-note',
           uploadDate: new Date().toLocaleTimeString(),
           status: 'indexed',
-          progress: 100
+          progress: 100,
+          content: newNote // Store content
       };
       setProject(prev => ({ ...prev, knowledgeBaseFiles: [...prev.knowledgeBaseFiles, noteFile] }));
       setNewNote('');
@@ -248,7 +279,8 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           type: 'text/html',
           uploadDate: new Date().toLocaleTimeString(),
           status: 'processing',
-          progress: 0
+          progress: 0,
+          content: `Simulated crawled content for ${newUrl}. This would contain text from the webpage.`
       };
       setProject(prev => ({ ...prev, knowledgeBaseFiles: [...prev.knowledgeBaseFiles, urlFile] }));
       setNewUrl('');
@@ -281,43 +313,56 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
       setShowSettings(false);
   };
 
-  // --- Search Simulation ---
+  // --- Real Search Implementation ---
   const performSearch = () => {
       if (!searchQuery.trim()) return;
       setIsSearching(true);
       setSearchResults([]);
       
-      // Simulate API latency
+      // We simulate a small delay to make it feel like "searching"
       setTimeout(() => {
-          // Dummy data generation
-          const dummyTexts = [
-              "“到现在整个世界到底有多少镇守府呢？很难数得清楚，按标准来说，沿海的县城和乡镇基本上保证都要配置一个，一些大城市和重要的航线上甚至有好几个镇守府。到如今，这么多这么多年来，舰娘的出现又有多少？俾斯麦出现过几次呢？屈指可数。”",
-              "“那个俾斯麦的传言最开始是从哪里传出来的无可考究，总而言之她出现在世界各地，偶尔还有欧根亲王跟随在她的身边。只是欧根亲王重巡洋舰，那个舰娘倒是比较常见。”",
-              "“而舰娘雇佣军呢？该怎么形容这一个团体呢？舰娘并非都是因为人类建造而出现，有时候会自然苏醒，这些就是流浪的舰娘的诞生原因，她们的诞生类似于深海舰娘的诞生。”",
-              "“戒严了骂，不戒严，等到出事了，又要骂，真难伺候。既不戒严，又不想出事。既想要马儿跑，又想马儿不吃草，哪有这样的好事？”",
-              "“有一些舰娘始终没有和谁建立感情，也有一些舰娘隐没在人类社会中谁也不知道……反正只要是没有镇守府的舰娘，我们都叫她们流浪舰娘。这只是一个称呼，没有贬义没有褒义，并非代表她们真的在流浪，也不代表她们不幸。”"
-          ];
+          const currentFiles = project.knowledgeBaseFiles.filter(f => f.kbId === selectedKbId);
+          const results: SearchResult[] = [];
           
-          const results: SearchResult[] = dummyTexts.map((text, idx) => ({
-              id: `res-${idx}`,
-              text: text,
-              source: `正文卷 ...常向，口味比较淡，没有那么多战斗，已经5W字了`,
-              score: 95.0 + (Math.random() * 4) // 95-99 score
-          }));
+          currentFiles.forEach(file => {
+             if (!file.content) return;
+             
+             const lowerContent = file.content.toLowerCase();
+             const lowerQuery = searchQuery.toLowerCase();
+             
+             // Simple string matching simulation for RAG
+             // In a real RAG, this would be vector similarity
+             if (lowerContent.includes(lowerQuery)) {
+                 // Find all occurrences or best occurrence
+                 const idx = lowerContent.indexOf(lowerQuery);
+                 // Extract window around match
+                 const start = Math.max(0, idx - 50);
+                 const end = Math.min(file.content.length, idx + lowerQuery.length + 100);
+                 let snippet = file.content.substring(start, end);
+                 if (start > 0) snippet = "..." + snippet;
+                 if (end < file.content.length) snippet = snippet + "...";
 
-          setSearchResults(results);
+                 results.push({
+                     id: `res-${file.id}-${idx}`,
+                     text: snippet,
+                     source: file.name,
+                     // Fake score: mostly high if exact match found
+                     score: 85 + Math.random() * 14
+                 });
+             }
+          });
+
+          setSearchResults(results.sort((a,b) => b.score - a.score));
           setIsSearching(false);
-      }, 800);
+      }, 600);
   };
 
   // Highlight helper
   const HighlightedText = ({ text, query }: { text: string, query: string }) => {
       if (!query) return <span>{text}</span>;
-      // Very simple highlighting for demo
-      // In real scenario, the backend might return offsets
-      // Here we just color match common words from query roughly
-      // Let's assume the query is "舰娘"
-      const parts = text.split(new RegExp(`(${query})`, 'gi'));
+      // Escape regex special characters from query
+      const safeQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const parts = text.split(new RegExp(`(${safeQuery})`, 'gi'));
       return (
           <span>
               {parts.map((part, i) => 
@@ -328,7 +373,6 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           </span>
       );
   };
-
 
   // Filter files for current KB
   const currentFiles = project.knowledgeBaseFiles.filter(f => f.kbId === selectedKbId);
@@ -466,7 +510,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                            <input 
                               value={searchQuery}
                               onChange={(e) => setSearchQuery(e.target.value)}
-                              placeholder="Enter query to test retrieval (e.g., 'concept of magic')..."
+                              placeholder="Enter query to search within your uploaded files..."
                               className="flex-1 bg-slate-800/80 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-amber-500 focus:outline-none shadow-inner"
                               onKeyDown={(e) => e.key === 'Enter' && performSearch()}
                            />
@@ -482,7 +526,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                            {searchResults.length === 0 && !isSearching && (
                                <div className="text-center text-slate-500 mt-20">
                                    <div className="text-4xl mb-4 opacity-30">🔍</div>
-                                   <p>Run a test query to verify embeddings.</p>
+                                   <p>{currentFiles.length === 0 ? "No files indexed. Upload some text files first." : "Enter a keyword to search your documents."}</p>
                                </div>
                            )}
                            
@@ -491,6 +535,12 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                                    {[1,2,3].map(i => (
                                        <div key={i} className="h-32 bg-slate-800/50 rounded-xl animate-pulse"></div>
                                    ))}
+                               </div>
+                           )}
+                            
+                           {searchResults.length === 0 && searchQuery && !isSearching && currentFiles.length > 0 && (
+                               <div className="text-center text-slate-500 mt-10">
+                                   No matches found for "{searchQuery}".
                                </div>
                            )}
 
@@ -527,7 +577,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
 
                            {activeTab === 'files' && (
                                <>
-                                 <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" />
+                                 <input type="file" ref={fileInputRef} onChange={handleFileSelect} multiple className="hidden" />
                                  <button 
                                     onClick={() => fileInputRef.current?.click()}
                                     className="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium px-4 py-2 rounded-lg flex items-center gap-2 shadow-lg shadow-emerald-900/20"
@@ -560,7 +610,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                        >
                            {filteredList.length === 0 ? (
                                 <div className="text-center text-slate-500 py-20">
-                                    {activeTab === 'files' && 'Drag & drop files here.'}
+                                    {activeTab === 'files' && 'Drag & drop text files here (txt, md, json).'}
                                     {activeTab === 'notes' && 'No notes yet.'}
                                     {activeTab === 'urls' && 'No URLs added.'}
                                 </div>

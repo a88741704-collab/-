@@ -102,6 +102,7 @@ export interface KnowledgeFile {
   status: 'indexed' | 'processing' | 'error';
   progress?: number; // 0-100 percentage
   totalChunks?: number; // Estimated chunks for display
+  content?: string; // Actual text content for local search simulation
 }
 
 export type AgentStatus = 'idle' | 'thinking' | 'generating' | 'error';
@@ -113,13 +114,13 @@ export interface ProjectState {
   title: string;
   genre: string;
   coreIdea: string;
-  ideaCritique?: string; // New
+  ideaCritique?: string; 
   settings: string;
   settingsCritique: string;
   characters: Character[];
-  characterCritique?: string; // New
+  characterCritique?: string;
   detailedOutline: string;
-  outlineCritique?: string; // New
+  outlineCritique?: string;
   volumes: Volume[]; 
   chapters: Chapter[];
   currentChapterId?: string;
