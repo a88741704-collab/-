@@ -25,7 +25,6 @@ const readFileAsText = (file: File): Promise<string> => {
              reader.readAsText(file);
         } else {
              // For binary files (pdf/doc) in this frontend-only demo, we can't easily parse them.
-             // We'll return a placeholder to indicate this limitation.
              resolve(`[Binary content of ${file.name} cannot be previewed in this local demo]`);
         }
     });
@@ -52,6 +51,14 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchMeta, setSearchMeta] = useState({ time: 0, tokens: 0, reqId: '' });
+
+  // Search Settings State (Visual only for simulation)
+  const [recallMethod, setRecallMethod] = useState<'hybrid' | 'vector' | 'keyword'>('hybrid');
+  const [vectorRatio, setVectorRatio] = useState(0.8);
+  const [topK, setTopK] = useState(8);
+  const [minScore, setMinScore] = useState(0.5);
+  const [enableRerank, setEnableRerank] = useState(false);
 
   // If no KB selected but list exists, select first
   useEffect(() => {
@@ -318,8 +325,9 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
       if (!searchQuery.trim()) return;
       setIsSearching(true);
       setSearchResults([]);
+      const startTime = performance.now();
       
-      // We simulate a small delay to make it feel like "searching"
+      // Simulation delay
       setTimeout(() => {
           const currentFiles = project.knowledgeBaseFiles.filter(f => f.kbId === selectedKbId);
           const results: SearchResult[] = [];
@@ -330,44 +338,91 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
              const lowerContent = file.content.toLowerCase();
              const lowerQuery = searchQuery.toLowerCase();
              
-             // Simple string matching simulation for RAG
-             // In a real RAG, this would be vector similarity
+             // --- Search Simulation Logic ---
+             let score = 0;
+             let snippet = "";
+             let matchIndex = -1;
+
+             // 1. Keyword Exact Match Score
              if (lowerContent.includes(lowerQuery)) {
-                 // Find all occurrences or best occurrence
-                 const idx = lowerContent.indexOf(lowerQuery);
-                 // Extract window around match
-                 const start = Math.max(0, idx - 50);
-                 const end = Math.min(file.content.length, idx + lowerQuery.length + 100);
-                 let snippet = file.content.substring(start, end);
+                 score += 0.6; // Base score for exact match
+                 matchIndex = lowerContent.indexOf(lowerQuery);
+             }
+
+             // 2. Vector Simulation (Keyword Density / Partial Match)
+             const queryTerms = lowerQuery.split(/\s+/).filter(t => t.length > 0);
+             let termMatches = 0;
+             queryTerms.forEach(term => {
+                 if (lowerContent.includes(term)) termMatches++;
+             });
+             if (queryTerms.length > 0) {
+                 score += (termMatches / queryTerms.length) * 0.4;
+             }
+
+             // Adjust Score based on Recall Method Settings
+             if (recallMethod === 'keyword' && matchIndex === -1) score = 0;
+             if (recallMethod === 'vector') {
+                 // Fuzz the score to simulate vector similarity even without exact match
+                 if (score === 0 && termMatches > 0) score = 0.4 + Math.random() * 0.2;
+             }
+
+             // Apply Threshold
+             if (score >= minScore) {
+                 // Rerank Simulation (Boost score slightly randomly if enabled)
+                 if (enableRerank) score = Math.min(0.99, score + Math.random() * 0.1);
+
+                 // Snippet Extraction
+                 // Prefer exact match location, otherwise find first term location
+                 if (matchIndex === -1 && termMatches > 0) {
+                     matchIndex = lowerContent.indexOf(queryTerms.find(t => lowerContent.includes(t)) || '');
+                 }
+
+                 const start = Math.max(0, matchIndex - 60);
+                 const end = Math.min(file.content.length, matchIndex + 200);
+                 snippet = file.content.substring(start, end);
+                 // Clean up newlines for display
+                 snippet = snippet.replace(/\n/g, ' '); 
                  if (start > 0) snippet = "..." + snippet;
                  if (end < file.content.length) snippet = snippet + "...";
 
                  results.push({
-                     id: `res-${file.id}-${idx}`,
+                     id: `res-${file.id}`,
                      text: snippet,
                      source: file.name,
-                     // Fake score: mostly high if exact match found
-                     score: 85 + Math.random() * 14
+                     score: score
                  });
              }
           });
 
-          setSearchResults(results.sort((a,b) => b.score - a.score));
+          // Sort by score
+          const sorted = results.sort((a,b) => b.score - a.score).slice(0, topK);
+          
+          setSearchResults(sorted);
+          const endTime = performance.now();
+          setSearchMeta({
+              time: (endTime - startTime) / 1000,
+              tokens: searchQuery.length + sorted.reduce((acc, r) => acc + r.text.length, 0),
+              reqId: `req-${Math.random().toString(16).substr(2, 8)}-${Math.random().toString(16).substr(2, 4)}`
+          });
           setIsSearching(false);
-      }, 600);
+      }, 500);
   };
 
   // Highlight helper
   const HighlightedText = ({ text, query }: { text: string, query: string }) => {
       if (!query) return <span>{text}</span>;
-      // Escape regex special characters from query
-      const safeQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const parts = text.split(new RegExp(`(${safeQuery})`, 'gi'));
+      // Split by query terms for "Hybrid/Vector" style highlighting
+      const terms = query.split(/\s+/).filter(t => t.length > 0).map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      if (terms.length === 0) return <span>{text}</span>;
+
+      const pattern = new RegExp(`(${terms.join('|')})`, 'gi');
+      const parts = text.split(pattern);
+
       return (
           <span>
               {parts.map((part, i) => 
-                  part.toLowerCase() === query.toLowerCase() 
-                  ? <span key={i} className="bg-orange-500/20 text-orange-400 border-b border-orange-500/50 mx-0.5 px-0.5 rounded-sm font-medium">{part}</span> 
+                  terms.some(t => new RegExp(t, 'i').test(part))
+                  ? <span key={i} className="bg-yellow-500/30 text-yellow-200 font-bold px-0.5 rounded-sm">{part}</span> 
                   : part
               )}
           </span>
@@ -396,7 +451,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
        )}
 
        {/* LEFT SIDEBAR: KB List */}
-       <div className="w-64 bg-[#151b28] border border-slate-700 rounded-xl flex flex-col overflow-hidden shadow-lg">
+       <div className="w-64 bg-[#151b28] border border-slate-700 rounded-xl flex flex-col overflow-hidden shadow-lg hidden md:flex">
            <div className="p-4 border-b border-slate-700 bg-[#0f1219]">
                <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-2">Knowledge Bases</h3>
                <button 
@@ -456,7 +511,6 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                        </h2>
                        <div className="flex gap-4 text-xs text-slate-400">
                            <span className="flex items-center gap-1">Model: <span className="text-emerald-400">{activeKb.embeddingModel}</span></span>
-                           <span className="flex items-center gap-1">Store: <span className="text-indigo-400">{activeKb.vectorStore}</span></span>
                        </div>
                    </div>
                    <button 
@@ -493,80 +547,207 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                    ))}
                    <button 
                       onClick={() => setActiveTab('test')}
-                      className={`pb-3 border-b-2 transition-all flex items-center gap-2 ${activeTab === 'test' ? 'text-amber-500 border-amber-500' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
+                      className={`pb-3 border-b-2 transition-all flex items-center gap-2 ${activeTab === 'test' ? 'text-blue-400 border-blue-400 font-bold' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
                    >
-                       🔍 Search Test
+                       知识检索 (Search Test)
                    </button>
                </div>
            </div>
 
            {/* Content Body */}
-           <div className="flex-1 overflow-hidden relative p-6 bg-[#0f172a]/50">
+           <div className="flex-1 overflow-hidden relative bg-[#0f172a]/50">
                
                {/* --- SEARCH TEST TAB --- */}
                {activeTab === 'test' && (
-                   <div className="flex flex-col h-full max-w-4xl mx-auto">
-                       <div className="flex gap-2 mb-6">
-                           <input 
-                              value={searchQuery}
-                              onChange={(e) => setSearchQuery(e.target.value)}
-                              placeholder="Enter query to search within your uploaded files..."
-                              className="flex-1 bg-slate-800/80 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-amber-500 focus:outline-none shadow-inner"
-                              onKeyDown={(e) => e.key === 'Enter' && performSearch()}
-                           />
-                           <button 
-                              onClick={performSearch}
-                              className="px-6 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg shadow-lg shadow-amber-900/20"
-                           >
-                               {isSearching ? 'Searching...' : 'Search'}
-                           </button>
+                   <div className="flex h-full">
+                       {/* Left: Search Area */}
+                       <div className="flex-1 flex flex-col p-6 border-r border-slate-700 overflow-hidden">
+                           <div className="text-center mb-8 mt-4">
+                               <h1 className="text-2xl font-bold text-white mb-6 tracking-tight">知识检索</h1>
+                               <div className="relative max-w-2xl mx-auto">
+                                   <input 
+                                      value={searchQuery}
+                                      onChange={(e) => setSearchQuery(e.target.value)}
+                                      onKeyDown={(e) => e.key === 'Enter' && performSearch()}
+                                      placeholder="请输入搜索内容..."
+                                      className="w-full h-12 pl-4 pr-12 rounded-lg border border-blue-500/50 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-lg shadow-blue-900/10 placeholder-slate-400"
+                                   />
+                                   <button 
+                                      onClick={performSearch}
+                                      className="absolute right-1 top-1 bottom-1 w-10 bg-blue-600 hover:bg-blue-500 rounded-md flex items-center justify-center text-white transition-colors"
+                                   >
+                                       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                                   </button>
+                               </div>
+                           </div>
+
+                           <div className="flex-1 overflow-hidden flex flex-col max-w-4xl mx-auto w-full">
+                               {/* Result Header */}
+                               <div className="flex items-center gap-4 text-xs text-slate-500 mb-4 px-2 font-mono">
+                                   <span>检索结果</span>
+                                   {searchResults.length > 0 && (
+                                       <>
+                                           <span className="border-l border-slate-700 pl-4">单次检索耗时 {searchMeta.time.toFixed(3)} s</span>
+                                           <span className="border-l border-slate-700 pl-4">Token消耗 {searchMeta.tokens} tokens</span>
+                                           <span className="border-l border-slate-700 pl-4 truncate max-w-[200px]">request ID {searchMeta.reqId}</span>
+                                       </>
+                                   )}
+                               </div>
+
+                               {/* Results List */}
+                               <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4 pb-10">
+                                   {isSearching ? (
+                                       <div className="space-y-4">
+                                           {[1,2,3].map(i => (
+                                               <div key={i} className="bg-white/5 rounded-lg p-4 animate-pulse">
+                                                   <div className="h-4 bg-slate-700 rounded w-1/3 mb-3"></div>
+                                                   <div className="h-3 bg-slate-700/50 rounded w-full mb-2"></div>
+                                                   <div className="h-3 bg-slate-700/50 rounded w-2/3"></div>
+                                               </div>
+                                           ))}
+                                       </div>
+                                   ) : searchResults.length > 0 ? (
+                                       searchResults.map((res, idx) => (
+                                           <div key={res.id} className="bg-transparent hover:bg-slate-800/30 p-4 rounded-lg transition-colors border-b border-slate-800/50 last:border-0">
+                                               <div className="flex justify-between items-start mb-2">
+                                                   <h4 className="text-sm font-bold text-slate-200">{idx + 1}. {res.source}</h4>
+                                                   <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded">Score: {res.score.toFixed(4)}</span>
+                                               </div>
+                                               <div className="text-sm text-slate-300 leading-relaxed font-serif whitespace-pre-line">
+                                                   <HighlightedText text={res.text} query={searchQuery} />
+                                               </div>
+                                           </div>
+                                       ))
+                                   ) : (
+                                       <div className="text-center text-slate-500 py-10">
+                                           {searchQuery ? "未找到相关内容 (No results found)" : "请输入关键词开始检索"}
+                                       </div>
+                                   )}
+                               </div>
+                           </div>
                        </div>
 
-                       <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-2">
-                           {searchResults.length === 0 && !isSearching && (
-                               <div className="text-center text-slate-500 mt-20">
-                                   <div className="text-4xl mb-4 opacity-30">🔍</div>
-                                   <p>{currentFiles.length === 0 ? "No files indexed. Upload some text files first." : "Enter a keyword to search your documents."}</p>
-                               </div>
-                           )}
+                       {/* Right: Settings Panel */}
+                       <div className="w-80 bg-white border-l border-slate-200 text-slate-800 flex flex-col">
+                           <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                               <h3 className="font-bold text-slate-800">检索参数设置</h3>
+                               <button className="text-slate-400 hover:text-blue-500" title="Reset">
+                                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                               </button>
+                           </div>
                            
-                           {isSearching && (
-                               <div className="space-y-4">
-                                   {[1,2,3].map(i => (
-                                       <div key={i} className="h-32 bg-slate-800/50 rounded-xl animate-pulse"></div>
-                                   ))}
-                               </div>
-                           )}
-                            
-                           {searchResults.length === 0 && searchQuery && !isSearching && currentFiles.length > 0 && (
-                               <div className="text-center text-slate-500 mt-10">
-                                   No matches found for "{searchQuery}".
-                               </div>
-                           )}
-
-                           {searchResults.map((res) => (
-                               <div key={res.id} className="bg-emerald-900/10 border border-emerald-500/30 rounded-lg p-4 shadow-lg hover:border-emerald-500/50 transition-colors">
-                                   <div className="flex justify-between items-start mb-3">
-                                       <div className="flex items-center gap-2 text-xs text-slate-400">
-                                           <span className="text-slate-500">来源:</span>
-                                           <span className="text-blue-400 underline cursor-pointer hover:text-blue-300 truncate max-w-md">{res.source}</span>
+                           <div className="p-4 overflow-y-auto flex-1 space-y-6">
+                               {/* Recall Settings */}
+                               <div>
+                                   <h4 className="text-sm font-bold text-slate-600 mb-3">召回设置</h4>
+                                   
+                                   <div className="space-y-3">
+                                       <div className="flex justify-between items-center cursor-pointer">
+                                           <label className="text-sm text-slate-500">召回方式</label>
+                                           <span className="text-slate-400 text-xs transform -rotate-90">›</span>
                                        </div>
-                                       <div className="bg-emerald-600 text-white text-xs font-bold px-2 py-0.5 rounded shadow-sm">
-                                           Score: {res.score.toFixed(1)}%
+                                       
+                                       {/* Recall Method Selection */}
+                                       <div className="border border-blue-100 rounded-lg p-3 bg-blue-50/50 space-y-3">
+                                           <label className="flex items-start gap-2 cursor-pointer">
+                                               <input type="radio" name="recall" checked={recallMethod === 'hybrid'} onChange={() => setRecallMethod('hybrid')} className="mt-1 text-blue-600 focus:ring-blue-500" />
+                                               <div>
+                                                   <span className="block text-sm font-bold text-slate-700">混合检索</span>
+                                                   <span className="block text-xs text-slate-500 mt-1">结合向量检索与关键词检索，返回两种结果中最匹配用户问题的文件。</span>
+                                                   
+                                                   {recallMethod === 'hybrid' && (
+                                                       <div className="mt-2">
+                                                           <div className="flex justify-between text-xs text-slate-500 mb-1">
+                                                               <span>向量检索占比</span>
+                                                               <span>{vectorRatio}</span>
+                                                           </div>
+                                                           <input 
+                                                              type="range" min="0" max="1" step="0.1" 
+                                                              value={vectorRatio} onChange={(e) => setVectorRatio(parseFloat(e.target.value))}
+                                                              className="w-full h-1 bg-blue-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                                           />
+                                                       </div>
+                                                   )}
+                                               </div>
+                                           </label>
+
+                                           <label className="flex items-start gap-2 cursor-pointer">
+                                               <input type="radio" name="recall" checked={recallMethod === 'vector'} onChange={() => setRecallMethod('vector')} className="mt-1 text-blue-600 focus:ring-blue-500" />
+                                               <div>
+                                                   <span className="block text-sm font-bold text-slate-700">向量检索</span>
+                                                   <span className="block text-xs text-slate-500 mt-1">通过向量化方式进行问题和文本段落的向量相似度匹配。</span>
+                                               </div>
+                                           </label>
+
+                                           <label className="flex items-start gap-2 cursor-pointer">
+                                               <input type="radio" name="recall" checked={recallMethod === 'keyword'} onChange={() => setRecallMethod('keyword')} className="mt-1 text-blue-600 focus:ring-blue-500" />
+                                               <div>
+                                                   <span className="block text-sm font-bold text-slate-700">关键词检索</span>
+                                                   <span className="block text-xs text-slate-500 mt-1">根据用户关键词精确匹配文本。</span>
+                                               </div>
+                                           </label>
                                        </div>
                                    </div>
-                                   <p className="text-slate-300 text-sm leading-relaxed font-serif">
-                                       <HighlightedText text={res.text} query={searchQuery} />
-                                   </p>
                                </div>
-                           ))}
+
+                               {/* Parameters */}
+                               <div className="space-y-4">
+                                   <div className="flex justify-between items-center">
+                                       <span className="text-sm text-slate-600">Rerank ⓘ</span>
+                                       <div 
+                                          onClick={() => setEnableRerank(!enableRerank)}
+                                          className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${enableRerank ? 'bg-blue-600' : 'bg-slate-300'}`}
+                                       >
+                                           <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${enableRerank ? 'right-0.5' : 'left-0.5'}`}></div>
+                                       </div>
+                                   </div>
+
+                                   <div>
+                                       <div className="flex justify-between text-sm text-slate-600 mb-2">
+                                           <span>召回数量 ⓘ</span>
+                                           <span className="border border-slate-200 px-2 rounded bg-white text-xs py-0.5">{topK}</span>
+                                       </div>
+                                       <input 
+                                          type="range" min="1" max="20" 
+                                          value={topK} onChange={(e) => setTopK(parseInt(e.target.value))}
+                                          className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                       />
+                                   </div>
+
+                                   <div>
+                                       <div className="flex justify-between text-sm text-slate-600 mb-2">
+                                           <span>召回分数 ⓘ</span>
+                                           <span className="border border-slate-200 px-2 rounded bg-white text-xs py-0.5">{minScore}</span>
+                                       </div>
+                                       <input 
+                                          type="range" min="0" max="1" step="0.05"
+                                          value={minScore} onChange={(e) => setMinScore(parseFloat(e.target.value))}
+                                          className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                       />
+                                   </div>
+
+                                   <div className="flex justify-between items-center opacity-50">
+                                       <span className="text-sm text-slate-600">QA干预 ⓘ</span>
+                                       <div className="w-10 h-5 rounded-full bg-slate-300 relative"><div className="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5"></div></div>
+                                   </div>
+                               </div>
+
+                               {/* Filters */}
+                               <div>
+                                   <h4 className="text-sm font-bold text-slate-600 mb-3">文件范围</h4>
+                                   <div className="flex justify-between items-center">
+                                       <span className="text-sm text-slate-600">按标签筛选 ⓘ</span>
+                                       <div className="w-10 h-5 rounded-full bg-slate-300 relative"><div className="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5"></div></div>
+                                   </div>
+                               </div>
+                           </div>
                        </div>
                    </div>
                )}
 
                {/* --- FILES/NOTES/URLS TABS --- */}
                {activeTab !== 'test' && (
-                   <div className="h-full flex flex-col">
+                   <div className="h-full flex flex-col p-6">
                        {/* Actions */}
                        <div className="flex justify-between mb-4">
                            <div className="text-sm text-slate-400 flex items-center gap-2">
