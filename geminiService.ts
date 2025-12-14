@@ -23,7 +23,31 @@ export const testApiConnection = async (baseUrl: string, apiKey: string, model: 
             cleanBaseUrl = `https://${cleanBaseUrl}`;
         }
 
-        const url = `${cleanBaseUrl}/chat/completions`;
+        // INTELLIGENT ENDPOINT SELECTION
+        // SiliconFlow and others usually separate Chat and Embedding endpoints.
+        // If the model looks like an embedding model, we must use the /embeddings endpoint.
+        const isEmbedding = model.toLowerCase().includes('embedding') || 
+                            model.toLowerCase().includes('bge') || 
+                            model.toLowerCase().includes('nomic') ||
+                            model.toLowerCase().includes('text-'); // heuristic
+
+        let url = '';
+        let body = {};
+
+        if (isEmbedding) {
+            url = `${cleanBaseUrl}/embeddings`;
+            body = {
+                model: model,
+                input: "Hello world, this is a connection test."
+            };
+        } else {
+            url = `${cleanBaseUrl}/chat/completions`;
+            body = {
+                model: model,
+                messages: [{ role: 'user', content: 'Hi' }],
+                max_tokens: 1
+            };
+        }
         
         // Simple test request
         const response = await fetch(url, {
@@ -34,20 +58,16 @@ export const testApiConnection = async (baseUrl: string, apiKey: string, model: 
             },
             mode: 'cors',
             credentials: 'omit',
-            body: JSON.stringify({
-                model: model,
-                messages: [{ role: 'user', content: 'Hi' }],
-                max_tokens: 1
-            })
+            body: JSON.stringify(body)
         });
 
         if (response.ok) {
-            return { success: true, message: '连接成功 (200 OK)' };
+            return { success: true, message: `连接成功 (200 OK) - ${isEmbedding ? 'Embedding' : 'Chat'} Mode` };
         } else {
             const text = await response.text();
             try {
                 const json = JSON.parse(text);
-                return { success: false, message: `错误: ${json.error?.message || response.statusText}` };
+                return { success: false, message: `错误: ${json.error?.message || json.message || response.statusText}` };
             } catch {
                 return { success: false, message: `错误 (${response.status}): ${text.substring(0, 100)}` };
             }
