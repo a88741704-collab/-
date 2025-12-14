@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { ProjectState, AgentConfig, AgentPlugin, RAGConfig } from '../types';
 import { testApiConnection, fetchAvailableModels } from '../geminiService';
-import RagSettingsModal from './RagSettingsModal';
 
 interface Props {
   project: ProjectState;
@@ -46,9 +45,6 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
   // Model Fetching State
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
-
-  // RAG Modal State
-  const [showRagModal, setShowRagModal] = useState(false);
 
   // New Plugin State
   const [showPluginForm, setShowPluginForm] = useState(false);
@@ -141,11 +137,6 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
       }
   };
 
-  const handleRagSave = (newRagConfig: RAGConfig) => {
-      updateConfig({ ragConfig: newRagConfig });
-      setShowRagModal(false);
-  };
-
   const handleSaveAndNext = () => {
     setProject({ ...project, agentConfig: config });
     onNext();
@@ -153,14 +144,6 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
 
   return (
     <div className="max-w-5xl mx-auto flex flex-col h-full animate-fade-in relative">
-      {showRagModal && (
-          <RagSettingsModal 
-            config={config.ragConfig} 
-            onSave={handleRagSave}
-            onClose={() => setShowRagModal(false)}
-          />
-      )}
-
       {/* Header */}
       <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
         <div className="flex items-center gap-3">
@@ -368,57 +351,18 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                   )}
                </div>
 
-               {/* Work Directory & Knowledge Base */}
+               {/* Work Directory */}
                <div className="glass-panel p-6 rounded-xl border border-slate-700">
                   <div className="flex justify-between items-center mb-4">
-                    <label className="text-slate-300 font-semibold">知识库 & 目录</label>
-                    <span className="text-slate-500 text-xs">+</span>
+                    <label className="text-slate-300 font-semibold">本地工作目录</label>
                   </div>
-                  
-                  <div className="space-y-4">
-                      {/* Local Dir */}
-                      <div>
-                          <label className="text-xs text-slate-500 mb-2 block uppercase tracking-wider">本地工作目录</label>
-                          <div className="flex gap-2">
-                             <input 
-                                value={config.workDir}
-                                onChange={(e) => updateConfig({ workDir: e.target.value })}
-                                className="flex-1 bg-black/30 border border-slate-600 rounded p-3 text-slate-400 font-mono text-sm"
-                             />
-                             <button className="text-red-500 hover:text-red-400 text-sm px-2">删除</button>
-                          </div>
-                      </div>
-
-                      {/* RAG Config */}
-                      <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg border border-slate-600/50">
-                          <div>
-                              <div className="flex items-center gap-2">
-                                  <h4 className="text-white font-medium">知识库 (RAG)</h4>
-                                  {config.ragConfig.enabled ? (
-                                      <span className="bg-emerald-900/50 text-emerald-400 text-xs px-2 py-0.5 rounded border border-emerald-800">ON</span>
-                                  ) : (
-                                      <span className="bg-slate-700 text-slate-400 text-xs px-2 py-0.5 rounded">OFF</span>
-                                  )}
-                              </div>
-                              <p className="text-xs text-slate-500 mt-1">
-                                  {config.ragConfig.name} • {config.ragConfig.embeddingModel}
-                              </p>
-                          </div>
-                          <div className="flex gap-3">
-                              <button 
-                                 onClick={() => updateConfig({ ragConfig: { ...config.ragConfig, enabled: !config.ragConfig.enabled } })}
-                                 className={`w-10 h-5 rounded-full relative transition-colors ${config.ragConfig.enabled ? 'bg-emerald-500' : 'bg-slate-600'}`}
-                              >
-                                  <div className={`w-3 h-3 bg-white rounded-full absolute top-1 transition-all ${config.ragConfig.enabled ? 'right-1' : 'left-1'}`}></div>
-                              </button>
-                              <button 
-                                 onClick={() => setShowRagModal(true)}
-                                 className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs rounded transition-colors"
-                              >
-                                  设置
-                              </button>
-                          </div>
-                      </div>
+                  <div className="flex gap-2">
+                     <input 
+                        value={config.workDir}
+                        onChange={(e) => updateConfig({ workDir: e.target.value })}
+                        className="flex-1 bg-black/30 border border-slate-600 rounded p-3 text-slate-400 font-mono text-sm"
+                     />
+                     <button className="text-red-500 hover:text-red-400 text-sm px-2">删除</button>
                   </div>
                </div>
 

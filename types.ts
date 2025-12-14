@@ -20,6 +20,7 @@ export interface AgentPlugin {
 }
 
 export interface RAGConfig {
+  id: string; // Unique ID for the KB
   enabled: boolean;
   name: string;
   embeddingModel: string;
@@ -55,8 +56,8 @@ export interface AgentConfig {
   customBaseUrl?: string;
   customApiKey?: string;
 
-  // Knowledge Base
-  ragConfig: RAGConfig;
+  // Knowledge Base - Now supports multiple
+  ragConfigs: RAGConfig[];
 
   workDir: string;
   description: string;
@@ -93,6 +94,7 @@ export interface Chapter {
 
 export interface KnowledgeFile {
   id: string;
+  kbId: string; // Link to specific RAGConfig ID
   name: string;
   size: string;
   type: string;

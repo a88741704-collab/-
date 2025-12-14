@@ -190,9 +190,16 @@ const getSystemInstruction = (config?: AgentConfig) => {
     base += `\n\n【Agent 设定】\n名称: ${config.name}\n描述: ${config.description}\n`;
     if (config.workDir) base += `本地知识库路径: ${config.workDir} (已加载上下文)\n`;
     
-    // RAG Context Injection (Simulated)
-    if (config.ragConfig?.enabled) {
-         base += `\n【知识库已启用】\n知识库: ${config.ragConfig.name}\n嵌入模型: ${config.ragConfig.embeddingModel}\n(RAG系统将自动检索相关信息并注入上下文)\n`;
+    // RAG Context Injection (Simulated Multi-KB)
+    if (config.ragConfigs && config.ragConfigs.length > 0) {
+        const enabledKbs = config.ragConfigs.filter(r => r.enabled);
+        if (enabledKbs.length > 0) {
+            base += `\n【知识库已启用】\n`;
+            enabledKbs.forEach(kb => {
+                base += `- 知识库: ${kb.name} (Model: ${kb.embeddingModel})\n`;
+            });
+            base += `(RAG系统将自动检索上述知识库的相关信息并注入上下文)\n`;
+        }
     }
 
     const activePlugins = config.plugins.filter(p => p.active);

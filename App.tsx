@@ -9,6 +9,8 @@ import StepWriter from './components/StepWriter';
 import StepKnowledgeBase from './components/StepKnowledgeBase'; // Import the new component
 import StatusPanel from './components/StatusPanel';
 
+const INITIAL_RAG_ID = 'kb-default-01';
+
 const INITIAL_PROJECT: ProjectState = {
   agentConfig: {
     name: 'Novel Agent',
@@ -19,20 +21,23 @@ const INITIAL_PROJECT: ProjectState = {
     plugins: AVAILABLE_PLUGINS,
     customBaseUrl: '',
     customApiKey: '',
-    ragConfig: {
-        enabled: true,
-        name: '我在女尊世界当药神',
-        embeddingModel: 'BAAI/bge-large-zh-v1.5',
-        embeddingDimension: 1024,
-        topK: 15,
-        rerankModel: 'BAAI/bge-reranker-v2-m3',
-        chunkSize: 512,
-        chunkOverlap: 64,
-        scoreThreshold: 0.7,
-        useSeparateApi: false,
-        vectorStore: 'local',
-        vectorStoreCollection: 'novel_knowledge_base'
-    }
+    ragConfigs: [
+        {
+            id: INITIAL_RAG_ID,
+            enabled: true,
+            name: '我在女尊世界当药神',
+            embeddingModel: 'BAAI/bge-large-zh-v1.5',
+            embeddingDimension: 1024,
+            topK: 15,
+            rerankModel: 'BAAI/bge-reranker-v2-m3',
+            chunkSize: 512,
+            chunkOverlap: 64,
+            scoreThreshold: 0.7,
+            useSeparateApi: false,
+            vectorStore: 'local',
+            vectorStoreCollection: 'novel_knowledge_base'
+        }
+    ]
   },
   agentStatus: 'idle',
   agentTask: '',
@@ -49,7 +54,7 @@ const INITIAL_PROJECT: ProjectState = {
   chapters: [],
   knowledgeBase: [],
   knowledgeBaseFiles: [
-      { id: 'f-demo-1', name: '元决界·官方设定全书.docx', size: '344 KB', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', uploadDate: '12-08 21:34', status: 'indexed' }
+      { id: 'f-demo-1', kbId: INITIAL_RAG_ID, name: '元决界·官方设定全书.docx', size: '344 KB', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', uploadDate: '12-08 21:34', status: 'indexed' }
   ],
   quickPhrases: [
       "环境：月色如霜，洒在青石板路上，泛起惨白的光。",
@@ -154,6 +159,9 @@ export default function App() {
 
   // Determine if we are in the "Writing Pipeline" mode to show the sub-steps
   const isPipelineMode = currentStep >= 0;
+  
+  // Calculate active KBs
+  const activeKbsCount = project.agentConfig.ragConfigs?.filter(r => r.enabled).length || 0;
 
   return (
     <div className="min-h-screen flex flex-col bg-[#0f172a] text-slate-200">
@@ -167,9 +175,9 @@ export default function App() {
            <div className="px-3 py-1 bg-slate-800 rounded-full border border-slate-700">
              {project.agentConfig.provider === 'custom' ? `🚀 Custom: ${project.agentConfig.model}` : `⚡ Google: ${project.agentConfig.model}`}
            </div>
-           {project.agentConfig.ragConfig.enabled && (
+           {activeKbsCount > 0 && (
                <div className="px-3 py-1 bg-emerald-900/30 text-emerald-400 rounded-full border border-emerald-800/50 flex items-center gap-1">
-                   <span>📚 RAG: {project.agentConfig.ragConfig.vectorStore}</span>
+                   <span>📚 RAG Enabled: {activeKbsCount}</span>
                </div>
            )}
         </div>
