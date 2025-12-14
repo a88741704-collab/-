@@ -16,6 +16,25 @@ const AVAILABLE_PLUGINS: AgentPlugin[] = [
   { id: 'visual', name: 'visual-director', description: '视觉导演，优化场景描述以适应漫改。', active: true, systemPromptAddon: 'Emphasize visual descriptions suitable for comic/anime adaptation.' },
 ];
 
+// Helper for URL preview
+const getUrlPreview = (baseUrl: string) => {
+    if (!baseUrl) return '';
+    let clean = baseUrl.trim();
+    if (!clean.startsWith('http')) clean = `https://${clean}`;
+    clean = clean.replace(/\/+$/, '');
+    // Strip common suffixes for preview clarity
+    ['/chat/completions', '/embeddings', '/models', '/v1'].forEach(suffix => {
+        if (clean.endsWith(suffix)) {
+            clean = clean.substring(0, clean.length - suffix.length);
+        }
+    });
+    clean = clean.replace(/\/+$/, '');
+    
+    // If it looks like siliconflow or generic openai, usually adds /v1 (handled by service), 
+    // but for visual preview we show the standard chat endpoint
+    return `${clean}/chat/completions`;
+};
+
 const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => {
   const [config, setConfig] = useState<AgentConfig>(project.agentConfig);
   const [activeTab, setActiveTab] = useState<'basic' | 'plugins' | 'permissions'>('basic');
@@ -205,7 +224,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                   <div className="flex justify-between items-center mb-4">
                     <label className="text-slate-300 font-semibold">API 服务提供商</label>
                   </div>
-                  <div className="flex gap-4 mb-4">
+                  <div className="flex gap-4 mb-6">
                     <button 
                       onClick={() => updateConfig({ provider: 'google', model: 'gemini-2.5-flash' })}
                       className={`flex-1 py-3 px-4 rounded-lg border transition-all ${config.provider === 'google' ? 'bg-indigo-600/20 border-indigo-500 text-indigo-400' : 'bg-slate-800/50 border-slate-700 text-slate-400'}`}
@@ -221,7 +240,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                   </div>
 
                   {config.provider === 'google' ? (
-                     <div>
+                     <div className="animate-fade-in">
                         <label className="text-xs text-slate-500 mb-2 block uppercase tracking-wider">选择模型</label>
                         <select 
                           value={config.model}
@@ -233,68 +252,117 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                         </select>
                      </div>
                   ) : (
-                     <div className="space-y-4 animate-fade-in relative">
-                        {/* API Key with Test Button */}
+                     <div className="space-y-6 animate-fade-in relative bg-[#0B0C0F] p-5 rounded-xl border border-slate-700/50">
+                        {/* API Key */}
                         <div>
                            <div className="flex justify-between items-center mb-2">
-                                <label className="text-xs text-slate-500 block uppercase tracking-wider">API Key (令牌)</label>
-                                <div className="flex items-center gap-2">
-                                     {testStatus === 'success' && <span className="text-emerald-500 text-xs animate-fade-in">✓ 连接成功</span>}
-                                     {testStatus === 'error' && <span className="text-red-500 text-xs animate-fade-in">{testMessage}</span>}
-                                     {testStatus === 'testing' && <span className="text-slate-400 text-xs animate-pulse">连接中...</span>}
-                                </div>
+                                <label className="text-sm font-bold text-slate-200">API 密钥 (API Key)</label>
+                                <a href="#" className="text-xs text-indigo-400 hover:text-indigo-300">点击这里获取密钥</a>
                            </div>
-                           <div className="relative">
+                           <div className="relative group">
                                 <input 
                                     type="password"
-                                    placeholder="sk-..." 
                                     value={config.customApiKey || ''}
                                     onChange={(e) => updateConfig({ customApiKey: e.target.value })}
-                                    className={`w-full bg-black/30 border ${testStatus === 'error' ? 'border-red-500' : 'border-slate-600'} rounded p-3 pr-20 text-white focus:border-emerald-500 focus:outline-none font-mono text-sm`}
+                                    className={`w-full bg-[#181A1F] border ${testStatus === 'error' ? 'border-red-500' : 'border-slate-700'} rounded-lg py-3 px-4 pr-24 text-white focus:border-emerald-500 focus:outline-none font-mono text-sm shadow-inner transition-colors`}
+                                    placeholder="sk-..."
                                 />
                                 <button 
                                     onClick={handleTestConnection}
                                     disabled={testStatus === 'testing'}
-                                    className="absolute right-2 top-2 bottom-2 px-3 bg-slate-700 hover:bg-slate-600 rounded text-xs text-white transition-colors border border-slate-600"
+                                    className={`absolute right-1.5 top-1.5 bottom-1.5 px-4 rounded-md text-xs font-medium transition-all ${
+                                        testStatus === 'success' ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-800' :
+                                        testStatus === 'error' ? 'bg-red-900/50 text-red-400 border border-red-800' :
+                                        'bg-[#2A2D35] hover:bg-[#353942] text-slate-300 border border-slate-600'
+                                    }`}
                                 >
-                                    检测
+                                    {testStatus === 'testing' ? (
+                                        <span className="animate-spin inline-block mr-1">⟳</span>
+                                    ) : testStatus === 'success' ? (
+                                        <span>✓ 成功</span>
+                                    ) : (
+                                        '检测'
+                                    )}
                                 </button>
                            </div>
+                           {testStatus === 'error' && <p className="text-xs text-red-500 mt-2">{testMessage}</p>}
                         </div>
 
+                        {/* API URL */}
                         <div>
-                           <label className="text-xs text-slate-500 mb-2 block uppercase tracking-wider">API Base URL (端点地址)</label>
+                           <div className="flex items-center gap-2 mb-2">
+                               <label className="text-sm font-bold text-slate-200">API 地址 (Base URL)</label>
+                               <span className="text-xs text-slate-500 cursor-help" title="API服务的根地址">ⓘ</span>
+                           </div>
                            <input 
                               placeholder="https://api.deepseek.com" 
                               value={config.customBaseUrl || ''}
                               onChange={(e) => updateConfig({ customBaseUrl: e.target.value })}
-                              className="w-full bg-black/30 border border-slate-600 rounded p-3 text-white focus:border-emerald-500 focus:outline-none font-mono text-sm"
+                              className="w-full bg-[#181A1F] border border-slate-700 rounded-lg py-3 px-4 text-white focus:border-emerald-500 focus:outline-none font-mono text-sm shadow-inner transition-colors"
                            />
+                           {config.customBaseUrl && (
+                               <div className="mt-2 text-xs text-slate-500 font-mono flex items-center gap-2">
+                                   <span className="text-slate-600">预览:</span>
+                                   <span className="text-slate-400">{getUrlPreview(config.customBaseUrl)}</span>
+                               </div>
+                           )}
                         </div>
                         
+                        {/* Models */}
                         <div>
                            <div className="flex justify-between items-center mb-2">
-                               <label className="text-xs text-slate-500 block uppercase tracking-wider">Model ID</label>
+                               <div className="flex items-center gap-2">
+                                   <label className="text-sm font-bold text-slate-200">模型</label>
+                                   <span className="bg-slate-800 text-slate-400 text-[10px] px-1.5 py-0.5 rounded-full">{fetchedModels.length || 0}</span>
+                               </div>
                                <button 
                                    onClick={handleFetchModels}
                                    disabled={fetchingModels}
-                                   className="text-[10px] bg-slate-700 hover:bg-emerald-600 text-white px-2 py-0.5 rounded transition-colors flex items-center gap-1"
+                                   className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1 transition-colors"
                                >
-                                   {fetchingModels ? '获取中...' : '⇩ 获取模型列表'}
+                                   {fetchingModels ? <span className="animate-spin">⟳</span> : <span>↻</span>}
+                                   刷新模型列表
                                </button>
                            </div>
-                           <input 
-                              list="custom-models"
-                              placeholder="deepseek-reasoner" 
-                              value={config.model}
-                              onChange={(e) => updateConfig({ model: e.target.value })}
-                              className="w-full bg-black/30 border border-slate-600 rounded p-3 text-white focus:border-emerald-500 focus:outline-none font-mono text-sm"
-                           />
-                           <datalist id="custom-models">
-                               {fetchedModels.map(m => (
-                                   <option key={m} value={m} />
-                               ))}
-                           </datalist>
+                           
+                           {/* Model Input/Search */}
+                           <div className="relative mb-3">
+                               <input 
+                                  value={config.model}
+                                  onChange={(e) => updateConfig({ model: e.target.value })}
+                                  placeholder="选择或输入模型 ID (如 deepseek-chat)"
+                                  className="w-full bg-[#181A1F] border border-slate-700 rounded-lg py-3 px-4 pl-10 text-white focus:border-emerald-500 focus:outline-none font-mono text-sm shadow-inner"
+                               />
+                               <span className="absolute left-3 top-3 text-slate-500">
+                                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                               </span>
+                           </div>
+
+                           {/* Fetched Model List (Cards) */}
+                           {fetchedModels.length > 0 && (
+                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto custom-scrollbar border border-slate-800 rounded-lg p-2 bg-[#121418]">
+                                   {fetchedModels.map(m => (
+                                       <button 
+                                           key={m}
+                                           onClick={() => updateConfig({ model: m })}
+                                           className={`text-left px-3 py-2 rounded-md text-xs font-mono transition-all flex items-center justify-between group ${
+                                               config.model === m 
+                                               ? 'bg-emerald-900/30 border border-emerald-800 text-white' 
+                                               : 'bg-slate-800/50 border border-transparent text-slate-400 hover:bg-slate-700 hover:text-white'
+                                           }`}
+                                       >
+                                           <span className="truncate">{m}</span>
+                                           {config.model === m && <span className="text-emerald-500">✓</span>}
+                                       </button>
+                                   ))}
+                               </div>
+                           )}
+                           
+                           <div className="mt-2 flex gap-2">
+                               <span className="text-[10px] text-slate-500">推荐:</span>
+                               <button onClick={() => updateConfig({ model: 'deepseek-chat' })} className="text-[10px] bg-slate-800 hover:bg-slate-700 px-2 rounded text-slate-300 transition-colors">DeepSeek Chat</button>
+                               <button onClick={() => updateConfig({ model: 'deepseek-reasoner' })} className="text-[10px] bg-slate-800 hover:bg-slate-700 px-2 rounded text-slate-300 transition-colors">DeepSeek Reasoner</button>
+                           </div>
                         </div>
                      </div>
                   )}
