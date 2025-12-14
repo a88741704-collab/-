@@ -14,22 +14,80 @@ const getEnvApiKey = () => {
 // Initialize the API client - always creates a new instance to pick up the latest key
 const getAI = () => new GoogleGenAI({ apiKey: getEnvApiKey() });
 
+// --- Helper: Normalize Base URL ---
+const normalizeBaseUrl = (url: string): string => {
+    let clean = url.trim();
+    clean = clean.replace(/\/+$/, ''); // Remove trailing slash
+    
+    // Known suffixes to strip to get to the "base"
+    const suffixes = [
+        '/chat/completions',
+        '/embeddings',
+        '/models',
+        '/audio/speech',
+        '/audio/transcriptions',
+        '/images/generations'
+    ];
+    
+    let modified = true;
+    while (modified) {
+        modified = false;
+        for (const suffix of suffixes) {
+            if (clean.endsWith(suffix)) {
+                clean = clean.substring(0, clean.length - suffix.length);
+                clean = clean.replace(/\/+$/, ''); 
+                modified = true;
+            }
+        }
+    }
+
+    if (!clean.startsWith('http')) {
+        clean = `https://${clean}`;
+    }
+    
+    return clean;
+};
+
+// --- Helper: Robust Fetch with /v1 Fallback ---
+// Many users paste "https://api.provider.com" but the API lives at "https://api.provider.com/v1"
+// This helper tries the original URL, and if it 404s, tries appending /v1.
+const fetchWithFallback = async (url: string, options: RequestInit): Promise<Response> => {
+    const response = await fetch(url, options);
+
+    // If 404 and the URL doesn't already contain /v1 (heuristically), try appending /v1
+    if (response.status === 404 && !url.includes('/v1/')) {
+        // Construct fallback URL. 
+        // We need to insert /v1 before the last segment (endpoint) usually, 
+        // but since we construct URLs like `${baseUrl}/models`, we can just modify the baseUrl logic in the caller.
+        // However, here we have the full URL. Let's try to insert /v1 before the last path segment.
+        // E.g. https://api.site.com/chat/completions -> https://api.site.com/v1/chat/completions
+        
+        try {
+            const urlObj = new URL(url);
+            // Simple heuristic: prepend /v1 to the pathname
+            if (!urlObj.pathname.startsWith('/v1')) {
+                urlObj.pathname = `/v1${urlObj.pathname}`;
+                // console.log(`[Auto-Fix] Retrying 404 with fallback: ${urlObj.toString()}`);
+                const fallbackResponse = await fetch(urlObj.toString(), options);
+                // Only return fallback if it's NOT 404, or if it is, return it anyway (we tried).
+                if (fallbackResponse.status !== 404) {
+                    return fallbackResponse;
+                }
+            }
+        } catch (e) {
+            // URL parsing failed, just return original response
+        }
+    }
+    return response;
+};
+
 // --- Helper: Fetch Available Models (OpenAI Compatible) ---
 export const fetchAvailableModels = async (baseUrl: string, apiKey: string): Promise<string[]> => {
     try {
-        let cleanBaseUrl = baseUrl.replace(/\/+$/, '').trim();
-        // Remove common suffixes if user included them
-        cleanBaseUrl = cleanBaseUrl.replace(/\/chat\/completions$/, '').replace(/\/embeddings$/, '');
-        
-        if (!cleanBaseUrl.startsWith('http')) {
-            cleanBaseUrl = `https://${cleanBaseUrl}`;
-        }
-
-        // Standard OpenAI endpoint is /models. 
-        // Some providers need /v1/models, usually the baseUrl includes /v1 if needed, but we append /models.
+        const cleanBaseUrl = normalizeBaseUrl(baseUrl);
         const url = `${cleanBaseUrl}/models`;
 
-        const response = await fetch(url, {
+        const response = await fetchWithFallback(url, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
@@ -40,7 +98,6 @@ export const fetchAvailableModels = async (baseUrl: string, apiKey: string): Pro
 
         if (response.ok) {
             const data = await response.json();
-            // Standard OpenAI format: { data: [{ id: "model-name", ... }] }
             if (Array.isArray(data.data)) {
                 return data.data.map((m: any) => m.id).sort();
             }
@@ -56,19 +113,17 @@ export const fetchAvailableModels = async (baseUrl: string, apiKey: string): Pro
 // --- Helper: Test API Connection ---
 export const testApiConnection = async (baseUrl: string, apiKey: string, model: string): Promise<{success: boolean, message: string}> => {
     try {
-        let cleanBaseUrl = baseUrl.replace(/\/+$/, '').trim();
-        // Auto-prepend https if missing
-        if (!cleanBaseUrl.startsWith('http')) {
-            cleanBaseUrl = `https://${cleanBaseUrl}`;
-        }
+        const cleanBaseUrl = normalizeBaseUrl(baseUrl);
+        
+        // Use a generic model if none provided, to avoid 400 Bad Request on "empty model name"
+        // But for Embedding endpoint, we might fail if model doesn't exist.
+        // For Chat, we can often just check connectivity.
+        const targetModel = model || 'gpt-3.5-turbo'; 
 
-        // INTELLIGENT ENDPOINT SELECTION
-        // SiliconFlow and others usually separate Chat and Embedding endpoints.
-        // If the model looks like an embedding model, we must use the /embeddings endpoint.
-        const isEmbedding = model.toLowerCase().includes('embedding') || 
-                            model.toLowerCase().includes('bge') || 
-                            model.toLowerCase().includes('nomic') ||
-                            model.toLowerCase().includes('text-'); // heuristic
+        const isEmbedding = targetModel.toLowerCase().includes('embedding') || 
+                            targetModel.toLowerCase().includes('bge') || 
+                            targetModel.toLowerCase().includes('nomic') ||
+                            targetModel.toLowerCase().includes('text-'); 
 
         let url = '';
         let body = {};
@@ -76,20 +131,19 @@ export const testApiConnection = async (baseUrl: string, apiKey: string, model: 
         if (isEmbedding) {
             url = `${cleanBaseUrl}/embeddings`;
             body = {
-                model: model,
-                input: "Hello world, this is a connection test."
+                model: targetModel,
+                input: "Test connection"
             };
         } else {
             url = `${cleanBaseUrl}/chat/completions`;
             body = {
-                model: model,
+                model: targetModel,
                 messages: [{ role: 'user', content: 'Hi' }],
                 max_tokens: 1
             };
         }
         
-        // Simple test request
-        const response = await fetch(url, {
+        const response = await fetchWithFallback(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -101,22 +155,24 @@ export const testApiConnection = async (baseUrl: string, apiKey: string, model: 
         });
 
         if (response.ok) {
-            return { success: true, message: `连接成功 (200 OK) - ${isEmbedding ? 'Embedding' : 'Chat'} Mode` };
+            return { success: true, message: `连接成功 (200 OK)` };
         } else {
             const text = await response.text();
             try {
                 const json = JSON.parse(text);
-                return { success: false, message: `错误: ${json.error?.message || json.message || response.statusText}` };
+                // Handle SiliconFlow/OpenAI specific error structures
+                const errMsg = json.error?.message || json.message || response.statusText;
+                return { success: false, message: `错误: ${errMsg}` };
             } catch {
-                return { success: false, message: `错误 (${response.status}): ${text.substring(0, 100)}` };
+                return { success: false, message: `错误 (${response.status}): ${text.substring(0, 50)}...` };
             }
         }
     } catch (e: any) {
         console.error("API Test Failed", e);
         if (e.name === 'TypeError' && e.message === 'Failed to fetch') {
-            return { success: false, message: '跨域(CORS)限制或网络不可达。请确保 API 地址支持浏览器直接访问(HTTPS)，或检查您的网络/代理设置。' };
+            return { success: false, message: '跨域(CORS)限制或网络不可达。' };
         }
-        return { success: false, message: `网络错误: ${e.message || '无法连接到服务器'}` };
+        return { success: false, message: `网络错误: ${e.message}` };
     }
 };
 
@@ -149,11 +205,7 @@ const getSystemInstruction = (config?: AgentConfig) => {
 
 // --- Helper: Custom OpenAI-Compatible API Caller ---
 const callCustomApi = async (config: AgentConfig, prompt: string, systemPrompt: string, jsonMode: boolean = false): Promise<string> => {
-    let baseUrl = config.customBaseUrl?.replace(/\/+$/, '').trim() || 'https://api.deepseek.com';
-    if (!baseUrl.startsWith('http')) {
-        baseUrl = `https://${baseUrl}`;
-    }
-    
+    let baseUrl = normalizeBaseUrl(config.customBaseUrl || 'https://api.deepseek.com');
     const apiKey = config.customApiKey || '';
     const model = config.model || 'deepseek-reasoner';
 
@@ -164,7 +216,8 @@ const callCustomApi = async (config: AgentConfig, prompt: string, systemPrompt: 
     ];
 
     try {
-        const response = await fetch(`${baseUrl}/chat/completions`, {
+        const url = `${baseUrl}/chat/completions`;
+        const response = await fetchWithFallback(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -176,8 +229,6 @@ const callCustomApi = async (config: AgentConfig, prompt: string, systemPrompt: 
                 model: model,
                 messages: messages,
                 stream: false,
-                // Attempt JSON mode if requested. Note: Not all providers support response_format.
-                // We will rely on prompt engineering as primary method for JSON.
                 ...(jsonMode ? { response_format: { type: "json_object" } } : {})
             })
         });
@@ -193,7 +244,7 @@ const callCustomApi = async (config: AgentConfig, prompt: string, systemPrompt: 
     } catch (e: any) {
         console.error("Custom API Call Failed", e);
         if (e.name === 'TypeError' && e.message === 'Failed to fetch') {
-            throw new Error('网络请求失败(CORS)。请检查 API 地址是否支持浏览器跨域访问，或尝试使用 Gemini 模型。');
+            throw new Error('网络请求失败(CORS)。请检查 API 地址是否支持浏览器跨域访问。');
         }
         throw e;
     }
@@ -201,7 +252,6 @@ const callCustomApi = async (config: AgentConfig, prompt: string, systemPrompt: 
 
 // --- Helper: Clean JSON Markdown ---
 const cleanJsonOutput = (text: string): string => {
-    // Remove ```json and ``` markers if present
     let clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
     return clean;
 };

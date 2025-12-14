@@ -22,6 +22,11 @@ const RagSettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
 
   const handleChange = (updates: Partial<RAGConfig>) => {
     setLocalConfig({ ...localConfig, ...updates });
+    // Reset test status when critical fields change
+    if (updates.ragBaseUrl || updates.ragApiKey) {
+        setTestStatus('idle');
+        setTestMessage('');
+    }
   };
 
   const handleTestConnection = async () => {
