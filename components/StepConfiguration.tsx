@@ -214,9 +214,9 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
       if (models.length > 0) {
           setFetchedModels(models);
           if (!config.model || config.model === 'deepseek-reasoner') updateConfig({ model: models[0] });
-          alert(`成功获取 ${models.length} 个模型！`);
+          alert(`成功连接！共获取 ${models.length} 个模型。\n已自动为您选择了第一个可用模型，您也可以点击下方下拉菜单手动选择。`);
       } else {
-          alert('无法获取模型列表，请确认 CORS 配置或使用 Proxy');
+          alert('无法获取模型列表，请确认：\n1. Base URL 是否正确 (如 https://api.deepseek.com)\n2. 是否存在 CORS 跨域问题 (可尝试使用代理)\n3. API Key 是否有效');
       }
   };
 
@@ -384,12 +384,20 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                                    {fetchingModels ? '获取中...' : '📥 拉取模型列表'}
                                </button>
                            </div>
-                           <input 
-                              value={config.model}
-                              onChange={(e) => updateConfig({ model: e.target.value })}
-                              placeholder="deepseek-reasoner"
-                              className="w-full bg-[#0B0C0F] border border-slate-700 rounded-lg py-3 px-4 text-white focus:border-emerald-500 focus:outline-none font-mono text-sm"
-                           />
+                           {/* Model Select Dropdown if models fetched */}
+                           <div className="relative">
+                               <input 
+                                  value={config.model}
+                                  onChange={(e) => updateConfig({ model: e.target.value })}
+                                  placeholder="deepseek-reasoner"
+                                  className="w-full bg-[#0B0C0F] border border-slate-700 rounded-lg py-3 px-4 text-white focus:border-emerald-500 focus:outline-none font-mono text-sm"
+                                  list="fetched-models-list"
+                               />
+                               <datalist id="fetched-models-list">
+                                   {fetchedModels.map(m => <option key={m} value={m} />)}
+                               </datalist>
+                           </div>
+                           
                            {fetchedModels.length > 0 && (
                                <div className="mt-2 text-[10px] text-slate-500 flex flex-wrap gap-2">
                                    <span>最近获取:</span>
