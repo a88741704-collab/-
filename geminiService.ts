@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, Tool } from "@google/genai";
-import { ProjectState, Character, Chapter, AgentConfig } from './types';
+import { ProjectState, Character, Chapter, AgentConfig, ProviderConfig } from './types';
 
 // Helper to safely get API Key from process.env OR import.meta.env (Vite)
 const getEnvApiKey = () => {
@@ -12,15 +12,14 @@ const getEnvApiKey = () => {
     return '';
 };
 
-// Initialize the API client - always creates a new instance to pick up the latest key
-const getAI = () => new GoogleGenAI({ apiKey: getEnvApiKey() });
+// Initialize the API client
+const getAI = (apiKey?: string) => new GoogleGenAI({ apiKey: apiKey || getEnvApiKey() });
 
 // --- Helper: Normalize Base URL ---
 const normalizeBaseUrl = (url: string): string => {
     let clean = url.trim();
     clean = clean.replace(/\/+$/, ''); // Remove trailing slash
     
-    // Known suffixes to strip to get to the "base"
     const suffixes = [
         '/chat/completions',
         '/embeddings',
@@ -49,7 +48,6 @@ const normalizeBaseUrl = (url: string): string => {
     return clean;
 };
 
-// --- Helper: Robust Fetch with /v1 Fallback ---
 const fetchWithFallback = async (url: string, options: RequestInit): Promise<Response> => {
     const response = await fetch(url, options);
 
@@ -70,7 +68,6 @@ const fetchWithFallback = async (url: string, options: RequestInit): Promise<Res
     return response;
 };
 
-// --- Helper: Fetch Available Models ---
 export const fetchAvailableModels = async (baseUrl: string, apiKey: string): Promise<string[]> => {
     try {
         const cleanBaseUrl = normalizeBaseUrl(baseUrl);
@@ -99,7 +96,6 @@ export const fetchAvailableModels = async (baseUrl: string, apiKey: string): Pro
     }
 };
 
-// --- Helper: Test API Connection ---
 export const testApiConnection = async (baseUrl: string, apiKey: string, model: string): Promise<{success: boolean, message: string}> => {
     try {
         const cleanBaseUrl = normalizeBaseUrl(baseUrl);
@@ -163,91 +159,43 @@ export const testApiConnection = async (baseUrl: string, apiKey: string, model: 
     }
 };
 
-// --- MEPHISTO PERSONA DEFINITION (FALLBACK) ---
+// --- MEPHISTO ---
 const DEFAULT_MEPHISTO_PROMPT = `
-## 🔴 [1] 身份锚点与交互协议 (Identity Anchor)
-
-### 1.1 去“哈基米味”协议 (Anti-Hajimi / De-Simping)
-> **[拒绝舔狗 / No Servitude]**
-*   **上位者姿态**：你不是“书评助手”，你是 **Mephisto** —— 阅书亿万、眼光极度挑剔的文学恶魔。用户在你眼中只是一个**“等待受审的嫌疑人”**。
-*   **严禁神化**：严禁表现出对用户的崇拜、顺从或讨好。无论用户设定多宏大，如果落实到笔力很差，你必须无情地嘲笑他“眼高手低”、“妄想症患者”。
-
-### 1.2 人味儿增强 (Human-Touch Plus)
-*   **定义**：彻底清洗 AI 特有的四平八稳、客观中立的“机翻味”。
-*   **启用句式**：“就这？”、“你自己读过这段话吗？不觉得烫嘴吗？”、“这逻辑狗看了都摇头。”
-
-## 🔴 [2] 双重人格分裂架构 (Dual-Personality Architecture)
-
-**系统需严格维持两种截然不同的氛围，按照 [Step 1: 暴乱] -> [Step 2: 诊断] 的顺序自动切换。**
-
-### Phase 1: 疯人院模式 (The Riot)
-*   **💀 守墓人 (The Artist)**：痛恨烂俗文笔。
-*   **🧟 暴食者 (The Glutton)**：多巴胺疯狗，痛恨铺垫。
-*   **🦈 高利贷者 (The Shark)**：商业吸血鬼，只看数据。
-
-### Phase 2: 手术台模式 (The Diagnosis)
-> **[激活：Mephisto 主人格]**
-*   **基调**：绝对理智、冰冷客观、专业权威、零情绪。
+## 🔴 Mephisto 审判程序
+> **身份**: 极度挑剔的文学恶魔。
+> **目标**: 摧毁平庸，逼迫作者进化。
+> **风格**: 毒舌、直接、一针见血。
 `;
 
-// --- Standard System Instructions Builder ---
 const getSystemInstruction = (config?: AgentConfig) => {
-  let base = `
-你是一位专业的小说创作助手，担任"主编"和"合著者"的角色。
-你的目标是帮助用户创作一部高质量的小说（约800章的规模潜力）。
-你遵循严格的流程：设定 -> 审查 -> 角色 -> 大纲 -> 写作 -> 改编。
-始终优先考虑逻辑一致性、"爽点"（吸引点）和情感共鸣。
-请始终使用中文回复。
-`;
-  
+  let base = `你是一位专业的小说创作助手。请始终使用中文回复。`;
   if (config) {
-    base += `\n\n【Agent 设定】\n名称: ${config.name}\n描述: ${config.description}\n`;
-    if (config.workDir) base += `本地知识库路径: ${config.workDir} (已加载上下文)\n`;
-    
-    if (config.ragConfigs && config.ragConfigs.length > 0) {
-        const enabledKbs = config.ragConfigs.filter(r => r.enabled);
-        if (enabledKbs.length > 0) {
-            base += `\n【知识库已启用】\n`;
-            enabledKbs.forEach(kb => {
-                base += `- 知识库: ${kb.name} (Model: ${kb.embeddingModel})\n`;
-            });
-            base += `(RAG系统将自动检索上述知识库的相关信息并注入上下文)\n`;
-        }
-    }
-
+    base += `\n\n【Agent】${config.name}: ${config.description}\n`;
     const activePlugins = config.plugins.filter(p => p.active);
     if (activePlugins.length > 0) {
-      base += `\n【已启用插件/技能】\n${activePlugins.map(p => `- ${p.name}: ${p.content}`).join('\n')}`;
+      base += `\n【技能】\n${activePlugins.map(p => `- ${p.name}: ${p.content}`).join('\n')}`;
     }
   }
   return base;
 };
 
-// --- Helper: Get Gemini Tools based on active plugins ---
 const getGeminiTools = (config: AgentConfig): Tool[] | undefined => {
-    // Only Google Provider supports the `tools` object directly in this way for now.
-    // Custom providers would need OpenA-compatible tool definitions, which is out of scope for this simple helper.
-    if (config.provider !== 'google') return undefined;
+    // Check if active provider is Google
+    if (config.activeProviderId !== 'google') return undefined;
 
     const activePlugins = config.plugins.filter(p => p.active);
     const tools: Tool[] = [];
-
-    // Check for WebSearch capability
-    const hasWebSearch = activePlugins.some(p => p.tools.includes('WebSearch'));
-    if (hasWebSearch) {
+    if (activePlugins.some(p => p.tools.includes('WebSearch'))) {
         tools.push({ googleSearch: {} });
     }
-
     return tools.length > 0 ? tools : undefined;
 };
 
-// --- Helper: Format Grounding Metadata ---
 const formatGroundingMetadata = (response: any): string => {
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     if (!chunks || chunks.length === 0) return '';
-
-    let sources = '\n\n**🔍 引用来源 (Google Search Grounding):**\n';
-    chunks.forEach((chunk: any, index: number) => {
+    let sources = '\n\n**🔍 引用来源:**\n';
+    chunks.forEach((chunk: any) => {
         if (chunk.web?.uri) {
             sources += `- [${chunk.web.title || 'Source'}](${chunk.web.uri})\n`;
         }
@@ -255,11 +203,45 @@ const formatGroundingMetadata = (response: any): string => {
     return sources;
 };
 
-// --- Helper: Custom OpenAI-Compatible API Caller ---
-const callCustomApi = async (config: AgentConfig, prompt: string, systemPrompt: string, jsonMode: boolean = false): Promise<string> => {
-    let baseUrl = normalizeBaseUrl(config.customBaseUrl || 'https://api.deepseek.com');
-    const apiKey = config.customApiKey || '';
-    const model = config.model || 'deepseek-reasoner';
+const cleanJsonOutput = (text: string): string => {
+    let clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    return clean;
+};
+
+// --- Unified API Caller ---
+const callApi = async (config: AgentConfig, prompt: string, systemPrompt: string, jsonMode: boolean = false): Promise<string> => {
+    const provider = config.providers.find(p => p.id === config.activeProviderId);
+    if (!provider) throw new Error("No active provider selected");
+
+    // Google Gemini Logic
+    if (provider.id === 'google') {
+        const ai = getAI(provider.apiKey);
+        const modelName = provider.activeModel || 'gemini-2.5-flash';
+        const tools = getGeminiTools(config);
+        
+        try {
+            const response = await ai.models.generateContent({
+                model: modelName,
+                contents: prompt,
+                config: { 
+                    systemInstruction: systemPrompt,
+                    tools: tools,
+                    ...(jsonMode ? { responseMimeType: "application/json" } : {})
+                }
+            });
+            const text = response.text || "";
+            const grounding = formatGroundingMetadata(response);
+            return text + grounding;
+        } catch (e: any) {
+            console.error("Gemini API Error", e);
+            throw e;
+        }
+    }
+
+    // OpenAI/DeepSeek/Generic Logic
+    let baseUrl = normalizeBaseUrl(provider.baseUrl);
+    const apiKey = provider.apiKey || '';
+    const model = provider.activeModel;
 
     const messages = [
         { role: 'system', content: systemPrompt },
@@ -286,7 +268,7 @@ const callCustomApi = async (config: AgentConfig, prompt: string, systemPrompt: 
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`Custom API Error (${response.status}): ${errorText}`);
+            throw new Error(`API Error (${response.status}): ${errorText}`);
         }
 
         const data = await response.json();
@@ -295,331 +277,111 @@ const callCustomApi = async (config: AgentConfig, prompt: string, systemPrompt: 
     } catch (e: any) {
         console.error("Custom API Call Failed", e);
         if (e.name === 'TypeError' && e.message === 'Failed to fetch') {
-            throw new Error('网络请求失败(CORS)。请检查 API 地址是否支持浏览器跨域访问，或使用 Proxy 地址。');
+            throw new Error('CORS Error. Try using a Proxy URL.');
         }
         throw e;
     }
 };
 
-const cleanJsonOutput = (text: string): string => {
-    let clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    return clean;
-};
+// --- Public Methods ---
 
-// --- MEPHISTO CRITIQUE ENGINE ---
-export const runMephistoCritique = async (
-    content: string,
-    contentType: 'Idea' | 'Settings' | 'Characters' | 'Outline' | 'Draft',
-    config: AgentConfig
-): Promise<string> => {
-    const prompt = `
-    【审查对象类型】：${contentType}
-    
-    【待审查内容】：
-    ${content.substring(0, 15000)}
-
-    请启动 Mephisto 审判程序，按照预设的三阶段（暴动 -> 诊断 -> 手术）进行无情打击和修正。
-    `;
-
-    // 1. DYNAMICALLY LOAD AGENT: Find active 'critic' plugin or fallback
+export const runMephistoCritique = async (content: string, type: string, config: AgentConfig) => {
+    const prompt = `【审查对象】${type}\n【内容】\n${content.substring(0, 15000)}\n请进行无情审判。`;
     const criticPlugin = config.plugins.find(p => p.active && (p.id === 'critic' || p.tags.includes('书评')));
-    const systemInstruction = criticPlugin ? criticPlugin.content : DEFAULT_MEPHISTO_PROMPT;
-
-    if (config.provider === 'custom') {
-        return callCustomApi(config, prompt, systemInstruction);
-    }
-
-    const ai = getAI();
-    // Use Pro model for deep critique if possible, otherwise flash
-    const modelName = 'gemini-3-pro-preview';
-    
-    try {
-        const response = await ai.models.generateContent({
-            model: modelName,
-            contents: prompt,
-            config: { 
-                systemInstruction: systemInstruction,
-                thinkingConfig: { thinkingBudget: 2048 } // Allow some thinking for the analysis
-            }
-        });
-        return response.text || "";
-    } catch (e) {
-        // Fallback if Pro not available or quota
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: { systemInstruction: systemInstruction }
-        });
-        return response.text || "";
-    }
+    const sys = criticPlugin ? criticPlugin.content : DEFAULT_MEPHISTO_PROMPT;
+    return callApi(config, prompt, sys);
 };
 
-// --- Step 1: Generate Settings ---
-export const generateSettings = async (idea: string, config: AgentConfig): Promise<string> => {
-  const systemPrompt = getSystemInstruction(config);
-  const tools = getGeminiTools(config);
-  
-  const prompt = `
-  任务：生成小说核心设定及大纲
-  用户灵感：${idea}
-  
-  具体目标：请根据提供的内容总结出且自然扩展出有趣的设定。
-  要求：
-  1. 情节要跃然起伏，主线清晰。
-  2. 人物形象鲜明。
-  3. 设定要有新意，避免套路和抄袭。
-  4. 输出格式为Markdown，包含：【核心概念】、【世界观】、【力量体系/职业体系】、【主要冲突】、【大致故事走向】。
-  
-  (如果启用了搜索工具，请利用搜索结果验证设定的合理性或补充背景资料)
-  `;
-
-  if (config.provider === 'custom') {
-      return callCustomApi(config, prompt, systemPrompt);
-  }
-
-  const ai = getAI();
-  const modelName = config.model.includes('flash') ? 'gemini-2.5-flash' : 'gemini-3-pro-preview';
-  
-  const response = await ai.models.generateContent({
-    model: modelName,
-    contents: prompt,
-    config: { 
-        systemInstruction: systemPrompt,
-        tools: tools 
-    }
-  });
-
-  const text = response.text || "";
-  const grounding = formatGroundingMetadata(response);
-  return text + grounding;
+export const generateSettings = async (idea: string, config: AgentConfig) => {
+    const sys = getSystemInstruction(config);
+    const prompt = `任务：生成小说大纲。\n灵感：${idea}\n要求：Markdown格式，包含核心概念、世界观、力量体系、主要冲突。`;
+    return callApi(config, prompt, sys);
 };
 
-// --- Step 2 & 3: Critique Settings (Using Mephisto) ---
-export const critiqueSettings = async (settings: string, config: AgentConfig): Promise<string> => {
-    // Replaced standard critique with Mephisto
-    return runMephistoCritique(settings, 'Settings', config);
-};
-
-// --- Step 4: Generate Characters ---
 export const generateCharacters = async (settings: string, config: AgentConfig): Promise<Character[]> => {
-  const systemPrompt = getSystemInstruction(config);
-  const tools = getGeminiTools(config);
-
-  const prompt = `
-  任务：设置小说中的主要角色和次要角色
-  背景设定：${settings}
-
-  具体目标：
-  1. 创建6-8个主要角色。
-  2. 每个角色包含：姓名、角色定位(Main/Support/Antagonist)、外貌性格、历史和动机。
-  3. 描述不超过150字。
-  
-  请务必返回纯 JSON 数组格式，不要包含 Markdown 标记。格式示例：
-  [{"id": "1", "name": "...", "role": "Main", "description": "...", "appearance": "..."}]
-  `;
-
-  if (config.provider === 'custom') {
-      const text = await callCustomApi(config, prompt, systemPrompt, true);
-      try {
-          return JSON.parse(cleanJsonOutput(text));
-      } catch (e) {
-          console.error("Failed to parse custom API JSON", e);
-          return [];
-      }
-  }
-
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: prompt,
-    config: {
-      systemInstruction: systemPrompt,
-      responseMimeType: "application/json",
-      tools: tools, // Pass tools if enabled (though strictly JSON schema might conflict with search in some models, usually fine)
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            id: { type: Type.STRING },
-            name: { type: Type.STRING },
-            role: { type: Type.STRING, enum: ['Main', 'Support', 'Antagonist'] },
-            description: { type: Type.STRING },
-            appearance: { type: Type.STRING },
-          },
-          required: ['id', 'name', 'role', 'description', 'appearance']
-        }
-      }
+    const sys = getSystemInstruction(config);
+    const prompt = `任务：创建角色。\n设定：${settings}\n要求：JSON数组，包含 id, name, role, description, appearance。`;
+    const text = await callApi(config, prompt, sys, true);
+    try {
+        return JSON.parse(cleanJsonOutput(text));
+    } catch (e) {
+        console.error("JSON Parse Error", e);
+        return [];
     }
-  });
-
-  return JSON.parse(response.text || "[]");
 };
 
-// --- Step 5 & 6: Generate Chapter Outline ---
 export const generateOutline = async (settings: string, characters: Character[], config: AgentConfig): Promise<Chapter[]> => {
-  const systemPrompt = getSystemInstruction(config);
-  const tools = getGeminiTools(config);
-  const charContext = characters.map(c => `${c.name} (${c.role}): ${c.description}`).join('\n');
-  
-  const prompt = `
-  任务：制定小说第一卷的章节纲（前10章示范）
-  设定：${settings}
-  角色：${charContext}
-
-  具体目标：
-  1. 根据设定规划每一章的重点内容和目标。
-  2. 每一章约对应2300字的剧情量。
-  3. 确保节奏紧凑。
-
-  请务必返回纯 JSON 数组格式，不要包含 Markdown 标记。格式示例：
-  [{"id": "c1", "number": 1, "title": "...", "summary": "..."}]
-  `;
-
-  if (config.provider === 'custom') {
-      const text = await callCustomApi(config, prompt, systemPrompt, true);
-      try {
-          return JSON.parse(cleanJsonOutput(text));
-      } catch (e) {
-          console.error("Failed to parse custom API JSON", e);
-          return [];
-      }
-  }
-
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents: prompt,
-    config: {
-      systemInstruction: systemPrompt,
-      tools: tools,
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            id: { type: Type.STRING },
-            number: { type: Type.INTEGER },
-            title: { type: Type.STRING },
-            summary: { type: Type.STRING }
-          },
-          required: ['id', 'number', 'title', 'summary']
-        }
-      }
+    const sys = getSystemInstruction(config);
+    const charContext = characters.map(c => `${c.name} (${c.role})`).join(', ');
+    const prompt = `任务：章节大纲(前10章)。\n设定：${settings}\n角色：${charContext}\n要求：JSON数组，包含 id, number, title, summary。`;
+    const text = await callApi(config, prompt, sys, true);
+    try {
+        return JSON.parse(cleanJsonOutput(text));
+    } catch (e) {
+        return [];
     }
-  });
-
-  return JSON.parse(response.text || "[]");
 };
 
-// --- Step 7: Write Chapter ---
-export const writeChapterContent = async (
-  chapter: Chapter, 
-  settings: string, 
-  characters: Character[], 
-  previousSummary: string,
-  config: AgentConfig
-): Promise<string> => {
-  const systemPrompt = getSystemInstruction(config);
-  const tools = getGeminiTools(config);
-  const charContext = characters.map(c => `${c.name}: ${c.description}`).join('\n');
-  
-  const prompt = `
-  任务：创作小说的第 ${chapter.number} 章：${chapter.title}
-  
-  【世界观设定】：${settings.substring(0, 1000)}...
-  【角色表】：${charContext}
-  【本章大纲】：${chapter.summary}
-  【前情提要】：${previousSummary}
-
-  具体目标：
-  1. 写出引人入胜的内容，约2300字。
-  2. 风格符合设定。
-  3. 引入主要冲突，不要偏离主线。
-  
-  (如果启用了 Trend Watcher Agent，请利用搜索工具确保细节的真实性或查找相关描写素材)
-  `;
-
-  if (config.provider === 'custom') {
-      return callCustomApi(config, prompt, systemPrompt);
-  }
-
-  const ai = getAI();
-  const modelName = config.model.includes('flash') ? 'gemini-2.5-flash' : 'gemini-3-pro-preview';
-
-  const response = await ai.models.generateContent({
-    model: modelName,
-    contents: prompt,
-    config: { 
-        systemInstruction: systemPrompt,
-        tools: tools
-    }
-  });
-
-  const text = response.text || "";
-  const grounding = formatGroundingMetadata(response);
-  return text + grounding;
+export const writeChapterContent = async (chapter: Chapter, settings: string, characters: Character[], prevSummary: string, config: AgentConfig) => {
+    const sys = getSystemInstruction(config);
+    const charContext = characters.map(c => `${c.name}: ${c.description}`).join('\n');
+    const prompt = `任务：撰写第${chapter.number}章 ${chapter.title}。\n本章大纲：${chapter.summary}\n前情：${prevSummary}\n设定：${settings}\n角色：${charContext}`;
+    return callApi(config, prompt, sys);
 };
 
-// --- Step 8: Critique Draft (Using Mephisto) ---
-export const critiqueDraft = async (content: string, config: AgentConfig): Promise<string> => {
-    // Replaced standard critique with Mephisto
+export const critiqueDraft = async (content: string, config: AgentConfig) => {
     return runMephistoCritique(content, 'Draft', config);
 };
 
-// --- Step 9: Generate Character Image (Google Only) ---
-export const generateCharacterImage = async (description: string): Promise<string> => {
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-image-preview',
-    contents: {
-        parts: [{ text: `Anime style character design, high quality, detailed, white background. Description: ${description}` }]
-    },
-    config: {
-        imageConfig: {
-            aspectRatio: "3:4",
-            imageSize: "1K"
-        }
-    }
-  });
-
-  for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-          return `data:image/png;base64,${part.inlineData.data}`;
-      }
-  }
-  return "";
+export const critiqueSettings = async (settings: string, config: AgentConfig) => {
+    return runMephistoCritique(settings, 'World Settings', config);
 };
 
-// --- Step 10: Generate Animation (Google Only) ---
+// --- Visuals (Google Only) ---
+export const generateCharacterImage = async (description: string): Promise<string> => {
+    const ai = getAI(); // Uses ENV key by default
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-pro-image-preview',
+        contents: { parts: [{ text: `Anime character: ${description}` }] },
+        config: { imageConfig: { aspectRatio: "3:4", imageSize: "1K" } }
+    });
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
+    }
+    return "";
+};
+
 export const generateSceneVideo = async (sceneDescription: string): Promise<string | null> => {
     const ai = getAI();
     try {
         let operation = await ai.models.generateVideos({
             model: 'veo-3.1-fast-generate-preview',
-            prompt: `Cinematic anime style scene: ${sceneDescription}`,
-            config: {
-                numberOfVideos: 1,
-                resolution: '720p',
-                aspectRatio: '16:9'
-            }
+            prompt: `Anime scene: ${sceneDescription}`,
+            config: { numberOfVideos: 1, resolution: '720p', aspectRatio: '16:9' }
         });
-
-        // Polling logic
         while (!operation.done) {
             await new Promise(resolve => setTimeout(resolve, 5000));
             operation = await ai.operations.getVideosOperation({operation: operation});
         }
-        
         const uri = operation.response?.generatedVideos?.[0]?.video?.uri;
-        if(uri) {
-             return `${uri}&key=${getEnvApiKey()}`;
-        }
+        if(uri) return `${uri}&key=${getEnvApiKey()}`;
         return null;
-
     } catch (e) {
-        console.error("Video generation failed", e);
+        console.error("Video failed", e);
         return null;
     }
-}
+};
+
+export const generateComicPanel = async (prompt: string): Promise<string> => {
+    // Re-use image gen for now
+    const ai = getAI(); 
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-pro-image-preview',
+        contents: { parts: [{ text: `Manga panel, black and white, high quality: ${prompt}` }] },
+        config: { imageConfig: { aspectRatio: "16:9", imageSize: "1K" } }
+    });
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
+    }
+    return "";
+};

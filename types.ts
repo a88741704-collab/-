@@ -1,15 +1,14 @@
 
-
 export enum PipelineStep {
   Configuration = -1, // New Agent Setup Step
   KnowledgeBase = -2, // Knowledge Base Management
-  IdeaGeneration = 0,
+  Chat = 0, // General Assistant / Idea
   WorldReview = 1,
   CharacterDesign = 2,
   OutlineStructure = 3,
   Drafting = 4,
-  Critique = 5,
-  Adaptation = 6
+  ComicGeneration = 5, // New
+  VideoGeneration = 6  // New
 }
 
 export interface AgentPlugin {
@@ -42,6 +41,9 @@ export interface RAGConfig {
   chunkSize?: number;
   chunkOverlap?: number;
   scoreThreshold?: number;
+  
+  // New Chunking Strategy
+  chunkingStrategy?: 'fixed' | 'markdown' | 'semantic';
 
   // Separate API Config for RAG (optional)
   useSeparateApi: boolean;
@@ -55,14 +57,27 @@ export interface RAGConfig {
   vectorStoreCollection?: string;
 }
 
+export interface ProviderConfig {
+    id: string; // 'google', 'openai', 'deepseek', 'anthropic', 'custom'
+    name: string;
+    enabled: boolean;
+    baseUrl: string;
+    apiKey: string;
+    models: string[]; 
+    activeModel: string;
+    icon?: string;
+}
+
 export interface AgentConfig {
   name: string;
   
-  // API Configuration
-  provider: 'google' | 'custom';
-  model: string; // Model name/ID (e.g. 'gemini-2.5-flash' or 'deepseek-reasoner')
-  
-  // Custom Provider Specifics
+  // New: Multiple Provider Configuration
+  activeProviderId: string;
+  providers: ProviderConfig[];
+
+  // Legacy fields for backward compatibility (optional/computed)
+  provider?: string; 
+  model?: string;
   customBaseUrl?: string;
   customApiKey?: string;
 
@@ -123,6 +138,21 @@ export interface KnowledgeFile {
   chunks?: TextChunk[]; // Real RAG chunks
 }
 
+export interface ChatMessage {
+    id: string;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    timestamp: number;
+    attachments?: string[]; // IDs or URLs
+}
+
+export interface Conversation {
+    id: string;
+    title: string;
+    messages: ChatMessage[];
+    updatedAt: number;
+}
+
 export type AgentStatus = 'idle' | 'thinking' | 'generating' | 'error';
 
 export interface UIPreferences {
@@ -137,8 +167,15 @@ export interface ProjectState {
   agentTask: string;
   title: string;
   genre: string;
+  
+  // Chat / Idea Phase
+  conversations: Conversation[];
+  activeConversationId: string | null;
+
+  // Legacy Idea fields
   coreIdea: string;
   ideaCritique?: string; 
+  
   settings: string;
   settingsCritique: string;
   characters: Character[];
@@ -153,5 +190,3 @@ export interface ProjectState {
   quickPhrases: string[];
   uiPreferences: UIPreferences; // New field
 }
-
-export type AIModelType = 'text-fast' | 'text-reasoning' | 'image' | 'video';

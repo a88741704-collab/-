@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { ProjectState, KnowledgeFile, RAGConfig, TextChunk } from '../types';
 import RagSettingsModal from './RagSettingsModal';
@@ -8,52 +9,29 @@ interface Props {
   setProject: React.Dispatch<React.SetStateAction<ProjectState>>;
 }
 
-interface SearchResult {
-    id: string;
-    text: string; // The chunk text
-    source: string;
-    score: number;
-    chunkIndex: number; // To show which chunk matched
-}
-
-// --- Real RAG Utilities ---
-
 // Helper to read file as text
 const readFileAsText = async (file: File): Promise<string> => {
-    // 1. Handle DOCX files using mammoth
     if (file.name.endsWith('.docx')) {
         try {
             const arrayBuffer = await file.arrayBuffer();
             const result = await mammoth.extractRawText({ arrayBuffer });
-            return result.value; // The raw text
+            return result.value;
         } catch (e: any) {
             console.error("DOCX parse error", e);
-            return `[解析 .docx 文件失败: ${e.message}]`;
+            return `[Error: ${e.message}]`;
         }
     }
-
-    // 2. Handle Text Files
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target?.result as string);
         reader.onerror = (e) => reject(e);
-        
-        // Allowed text types
-        if (file.type.match(/text.*/) || 
-            file.name.endsWith('.md') || 
-            file.name.endsWith('.json') || 
-            file.name.endsWith('.txt') || 
-            file.name.endsWith('.csv') ||
-            file.name.endsWith('.js') ||
-            file.name.endsWith('.ts')) {
-             reader.readAsText(file);
-        } else {
-             resolve(`[暂不支持的文件格式: ${file.name}。请上传 .docx, .txt, .md, .json]`);
-        }
+        reader.readAsText(file);
     });
 };
 
-// Recursive Character Text Splitter (Optimized for Chinese)
+// --- CHUNKING STRATEGIES ---
+
+// 1. Recursive / Semantic (Existing)
 const recursiveSplitText = (text: string, chunkSize: number, chunkOverlap: number): TextChunk[] => {
     const chunks: TextChunk[] = [];
     if (!text) return chunks;
@@ -61,330 +39,102 @@ const recursiveSplitText = (text: string, chunkSize: number, chunkOverlap: numbe
     let startIndex = 0;
     while (startIndex < text.length) {
         let endIndex = startIndex + chunkSize;
-        
         if (endIndex < text.length) {
-            // Priority 1: Paragraphs (Double newline)
             let splitIndex = text.lastIndexOf('\n\n', endIndex);
+            if (splitIndex === -1 || splitIndex < startIndex + chunkSize * 0.5) splitIndex = text.lastIndexOf('\n', endIndex);
+            if (splitIndex === -1 || splitIndex < startIndex + chunkSize * 0.5) splitIndex = text.lastIndexOf(' ', endIndex);
             
-            // Priority 2: Single newline
-            if (splitIndex === -1 || splitIndex < startIndex + chunkSize * 0.5) {
-                splitIndex = text.lastIndexOf('\n', endIndex);
-            }
-
-            // Priority 3: Chinese Sentence Endings (。, ！？)
-            if (splitIndex === -1 || splitIndex < startIndex + chunkSize * 0.5) {
-                const regex = /[。！？]/g;
-                let match;
-                let lastMatchIndex = -1;
-                // Search for punctuation near the end
-                while ((match = regex.exec(text.substring(startIndex, endIndex))) !== null) {
-                    lastMatchIndex = startIndex + match.index;
-                }
-                if (lastMatchIndex !== -1) {
-                    splitIndex = lastMatchIndex + 1; // Include the punctuation
-                }
-            }
-
-            // Priority 4: Space (for English)
-            if (splitIndex === -1 || splitIndex < startIndex + chunkSize * 0.5) {
-                splitIndex = text.lastIndexOf(' ', endIndex);
-            }
-
-            // If found a valid split point, use it
             if (splitIndex > startIndex) {
                 endIndex = splitIndex;
-                // If double newline, skip the newlines for the next start
-                if (text.substring(endIndex, endIndex + 2) === '\n\n') {
-                     endIndex += 2;
-                } else if (text[endIndex] === '\n') {
-                     endIndex += 1;
-                }
+                if (text[endIndex] === '\n') endIndex += 1;
             }
         } else {
             endIndex = text.length;
         }
 
         const chunkText = text.substring(startIndex, endIndex);
-        
-        // Only add non-empty chunks
         if (chunkText.trim().length > 0) {
             chunks.push({
                 id: `chk-${Date.now()}-${chunks.length}`,
                 text: chunkText.trim(),
-                startIndex: startIndex,
-                endIndex: endIndex
+                startIndex,
+                endIndex
             });
         }
-
-        // Move start index for next chunk, backing up by overlap
-        // Prevent infinite loop if overlap >= chunkSize (invalid config) or no progress
         const nextStart = Math.max(startIndex + 1, endIndex - chunkOverlap);
-        
-        // Ensure we actually move forward
-        if (nextStart <= startIndex) {
-            startIndex = endIndex;
-        } else {
-            startIndex = nextStart;
-        }
-
+        startIndex = nextStart <= startIndex ? endIndex : nextStart;
         if (endIndex >= text.length) break;
+    }
+    return chunks;
+};
+
+// 2. Markdown Header Split
+const markdownSplitText = (text: string): TextChunk[] => {
+    const chunks: TextChunk[] = [];
+    // Regex for headers # to ######
+    const regex = /(^|\n)(#{1,6})\s+(.+)/g; 
+    let match;
+    let lastIndex = 0;
+    
+    // Find all headers
+    const matches = Array.from(text.matchAll(regex));
+    
+    if (matches.length === 0) return recursiveSplitText(text, 1000, 100); // Fallback
+
+    for (let i = 0; i < matches.length; i++) {
+        const currentMatch = matches[i];
+        const nextMatch = matches[i + 1];
+        
+        const start = currentMatch.index!;
+        const end = nextMatch ? nextMatch.index! : text.length;
+        
+        const content = text.substring(start, end).trim();
+        if (content) {
+            chunks.push({
+                id: `md-${i}`,
+                text: content,
+                startIndex: start,
+                endIndex: end
+            });
+        }
+    }
+    // Add preamble if any
+    if (matches.length > 0 && matches[0].index! > 0) {
+         chunks.unshift({
+             id: 'preamble',
+             text: text.substring(0, matches[0].index!).trim(),
+             startIndex: 0,
+             endIndex: matches[0].index!
+         });
     }
 
     return chunks;
 };
 
+const splitText = (text: string, strategy: string | undefined, chunkSize: number, chunkOverlap: number) => {
+    if (strategy === 'markdown') return markdownSplitText(text);
+    return recursiveSplitText(text, chunkSize, chunkOverlap);
+};
+
 const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
   const { ragConfigs } = project.agentConfig;
-  
-  // State for selected KB
   const [selectedKbId, setSelectedKbId] = useState<string | null>(ragConfigs.length > 0 ? ragConfigs[0].id : null);
   const activeKb = ragConfigs.find(k => k.id === selectedKbId);
-
-  const [activeTab, setActiveTab] = useState<'files' | 'notes' | 'urls' | 'test'>('files');
-  const [dragActive, setDragActive] = useState(false);
-  const [reindexingId, setReindexingId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'files' | 'test'>('files');
   const [showSettings, setShowSettings] = useState(false);
   
-  // Inputs
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [newNote, setNewNote] = useState('');
-  const [newUrl, setNewUrl] = useState('');
-
-  // Search Test State
-  const [searchQuery, setSearchQuery] = useState('');
-  const [allSearchResults, setAllSearchResults] = useState<SearchResult[]>([]);
-  const [visibleResultsCount, setVisibleResultsCount] = useState(10); // Pagination control
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchMeta, setSearchMeta] = useState({ time: 0, tokens: 0, reqId: '' });
-
-  // Search Settings State
-  const [recallMethod, setRecallMethod] = useState<'hybrid' | 'vector' | 'keyword'>('hybrid');
-  const [vectorRatio, setVectorRatio] = useState(0.8);
-  const [topK, setTopK] = useState(activeKb?.topK || 20); 
-  const [minScore, setMinScore] = useState(0.5);
-  const [enableRerank, setEnableRerank] = useState(false);
-
-  // If no KB selected but list exists, select first
-  useEffect(() => {
-      if (!selectedKbId && ragConfigs.length > 0) {
-          setSelectedKbId(ragConfigs[0].id);
-      }
-  }, [ragConfigs, selectedKbId]);
-
-  // --- Handlers for KB Management ---
-
-  const handleAddKb = () => {
-      const newId = `kb-${Date.now()}`;
-      const newKb: RAGConfig = {
-          id: newId,
-          enabled: true,
-          name: '新建知识库',
-          embeddingModel: 'BAAI/bge-large-zh-v1.5',
-          embeddingDimension: 1024,
-          topK: 20,
-          chunkSize: 512,
-          chunkOverlap: 64,
-          useSeparateApi: false,
-          vectorStore: 'local',
-          vectorStoreCollection: 'new_collection'
-      };
-      setProject(prev => ({
-          ...prev,
-          agentConfig: {
-              ...prev.agentConfig,
-              ragConfigs: [...prev.agentConfig.ragConfigs, newKb]
-          }
-      }));
-      setSelectedKbId(newId);
-  };
-
-  const handleToggleKb = (id: string, e: React.MouseEvent) => {
-      e.stopPropagation();
-      setProject(prev => ({
-          ...prev,
-          agentConfig: {
-              ...prev.agentConfig,
-              ragConfigs: prev.agentConfig.ragConfigs.map(k => k.id === id ? { ...k, enabled: !k.enabled } : k)
-          }
-      }));
-  };
-
-  const handleDeleteKb = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (confirm('确定要删除这个知识库吗？')) {
-        setProject(prev => ({
-            ...prev,
-            agentConfig: {
-                ...prev.agentConfig,
-                ragConfigs: prev.agentConfig.ragConfigs.filter(k => k.id !== id)
-            }
-        }));
-        if (selectedKbId === id) setSelectedKbId(null);
-    }
-  };
-
-  // --- Handlers for Files (Now with Real Chunking) ---
-
   const processFile = async (file: File) => {
       if (!selectedKbId || !activeKb) return;
+      let content = await readFileAsText(file);
+      
+      const chunks = splitText(content, activeKb.chunkingStrategy, activeKb.chunkSize || 512, activeKb.chunkOverlap || 64);
 
-      // 1. Read File Content
-      let content = '';
-      try {
-          content = await readFileAsText(file);
-      } catch (e) {
-          console.error("Failed to read file", e);
-          content = "读取错误";
-      }
-
-      // 2. Perform Real Slicing
-      const chunkSize = activeKb.chunkSize ?? 512;
-      const chunkOverlap = activeKb.chunkOverlap ?? 64;
-      const chunks = recursiveSplitText(content, chunkSize, chunkOverlap);
-
-      // 3. Create Entry
       const newFile: KnowledgeFile = {
-          id: `f-${Date.now()}-${Math.random().toString(36).substr(2,5)}`,
+          id: `f-${Date.now()}`,
           kbId: selectedKbId,
           name: file.name,
           size: `${(file.size / 1024).toFixed(1)} KB`,
           type: file.type || 'text/plain',
-          uploadDate: new Date().toLocaleTimeString(),
-          status: 'processing',
-          progress: 0,
-          totalChunks: chunks.length,
-          content: content,
-          chunks: chunks // Store the sliced chunks
-      };
-
-      setProject(prev => ({
-          ...prev, 
-          knowledgeBaseFiles: [...(prev.knowledgeBaseFiles || []), newFile]
-      }));
-
-      // Simulate Embedding Progress (Visual feedback for Chunking process)
-      const processingSpeed = 10; 
-      const updateInterval = 100;
-      const totalSteps = 20; // Faster simulation for local chunking
-      
-      let steps = 0;
-      const timer = setInterval(() => {
-          steps++;
-          const progress = Math.min(99, (steps / totalSteps) * 100);
-
-          setProject(prev => ({
-              ...prev,
-              knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => 
-                  f.id === newFile.id 
-                  ? { ...f, progress: progress } 
-                  : f
-              )
-          }));
-
-          if (progress >= 99) {
-              clearInterval(timer);
-              setTimeout(() => {
-                  setProject(prev => ({
-                      ...prev,
-                      knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => 
-                          f.id === newFile.id 
-                          ? { ...f, status: 'indexed', progress: 100 } 
-                          : f
-                      )
-                  }));
-              }, 200);
-          }
-      }, updateInterval);
-  };
-
-  const handleDrag = (e: React.DragEvent) => {
-      e.preventDefault(); e.stopPropagation();
-      if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true);
-      else if (e.type === 'dragleave') setDragActive(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-      e.preventDefault(); e.stopPropagation();
-      setDragActive(false);
-      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-          Array.from(e.dataTransfer.files).forEach(f => processFile(f));
-      }
-  };
-  
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files.length > 0) {
-          Array.from(e.target.files).forEach(file => processFile(file));
-      }
-      if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-      }
-  };
-
-  const handleReindex = async (id: string) => {
-      if (reindexingId || !activeKb) return;
-      setReindexingId(id);
-      
-      const targetFile = project.knowledgeBaseFiles.find(f => f.id === id);
-      if(!targetFile || !targetFile.content) return;
-
-      // Re-slice (in case settings changed)
-      const chunkSize = activeKb.chunkSize ?? 512;
-      const chunkOverlap = activeKb.chunkOverlap ?? 64;
-      const chunks = recursiveSplitText(targetFile.content, chunkSize, chunkOverlap);
-
-      setProject(prev => ({
-          ...prev,
-          knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => 
-             f.id === id ? { ...f, status: 'processing', progress: 0, totalChunks: chunks.length, chunks: chunks } : f
-          )
-      }));
-
-      let progress = 0;
-      const interval = setInterval(() => {
-          progress += 10;
-          setProject(prev => ({
-              ...prev,
-              knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => 
-                  f.id === id ? { ...f, progress: Math.min(99, progress) } : f
-              )
-          }));
-
-          if (progress >= 100) {
-              clearInterval(interval);
-              setTimeout(() => {
-                  setProject(prev => ({
-                      ...prev,
-                      knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => 
-                          f.id === id ? { ...f, status: 'indexed', progress: 100 } : f
-                      )
-                  }));
-                  setReindexingId(null);
-              }, 300);
-          }
-      }, 100);
-  };
-
-  const handleDeleteFile = (id: string) => {
-      setProject(prev => ({
-          ...prev,
-          knowledgeBaseFiles: prev.knowledgeBaseFiles.filter(f => f.id !== id)
-      }));
-  };
-
-  // --- Handlers for Notes & URLs ---
-  const handleAddNote = () => {
-      if(!newNote.trim() || !selectedKbId || !activeKb) return;
-      
-      const content = newNote;
-      const chunkSize = activeKb.chunkSize ?? 512;
-      const chunks = recursiveSplitText(content, chunkSize, activeKb.chunkOverlap ?? 64);
-
-      const noteFile: KnowledgeFile = {
-          id: `n-${Date.now()}`,
-          kbId: selectedKbId,
-          name: `笔记: ${newNote.substring(0, 10)}...`,
-          size: `${newNote.length} 字`,
-          type: 'application/x-note',
           uploadDate: new Date().toLocaleTimeString(),
           status: 'indexed',
           progress: 100,
@@ -392,621 +142,69 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           content: content,
           chunks: chunks
       };
-      setProject(prev => ({ ...prev, knowledgeBaseFiles: [...prev.knowledgeBaseFiles, noteFile] }));
-      setNewNote('');
-  };
 
-  const handleAddUrl = () => {
-      if(!newUrl.trim() || !selectedKbId || !activeKb) return;
-      
-      const simulatedContent = `[已抓取页面: ${newUrl}]\n\n小说写作是一门需要耐心、技巧和一点疯狂的艺术。小说的结构通常遵循三幕式结构。\n\n人物必须有缺陷。完美的角色是无聊的。给他们内心冲突。背景设定本身就应该是一个角色。`;
-      
-      const chunkSize = activeKb.chunkSize ?? 512;
-      const chunks = recursiveSplitText(simulatedContent, chunkSize, activeKb.chunkOverlap ?? 64);
-
-      const urlFile: KnowledgeFile = {
-          id: `u-${Date.now()}`,
-          kbId: selectedKbId,
-          name: newUrl,
-          size: 'Web Page',
-          type: 'text/html',
-          uploadDate: new Date().toLocaleTimeString(),
-          status: 'processing',
-          progress: 0,
-          totalChunks: chunks.length,
-          content: simulatedContent,
-          chunks: chunks
-      };
-      setProject(prev => ({ ...prev, knowledgeBaseFiles: [...prev.knowledgeBaseFiles, urlFile] }));
-      setNewUrl('');
-      
-      let p = 0;
-      const interval = setInterval(() => {
-          p += 20;
-          setProject(prev => ({
-              ...prev,
-              knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => f.id === urlFile.id ? { ...f, progress: p } : f)
-          }));
-          if(p >= 100) {
-              clearInterval(interval);
-              setProject(prev => ({
-                  ...prev,
-                  knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => f.id === urlFile.id ? { ...f, status: 'indexed', size: '15 KB (抓取)', progress: 100 } : f)
-              }));
-          }
-      }, 100);
-  };
-
-  const handleSaveSettings = (newRagConfig: RAGConfig) => {
       setProject(prev => ({
-          ...prev,
-          agentConfig: {
-              ...prev.agentConfig,
-              ragConfigs: prev.agentConfig.ragConfigs.map(k => k.id === newRagConfig.id ? newRagConfig : k)
-          }
+          ...prev, 
+          knowledgeBaseFiles: [...(prev.knowledgeBaseFiles || []), newFile]
       }));
-      setShowSettings(false);
-  };
-
-  // --- Real Search Implementation (Chunk-based) ---
-  const performSearch = () => {
-      if (!searchQuery.trim()) return;
-      setIsSearching(true);
-      setAllSearchResults([]); 
-      setVisibleResultsCount(10); 
-
-      const startTime = performance.now();
-      
-      setTimeout(() => {
-          const currentFiles = project.knowledgeBaseFiles.filter(f => f.kbId === selectedKbId);
-          const results: SearchResult[] = [];
-          
-          const lowerQuery = searchQuery.toLowerCase();
-          const queryTerms = lowerQuery.split(/\s+/).filter(t => t.length > 0);
-
-          currentFiles.forEach(file => {
-             if (!file.chunks) return;
-
-             file.chunks.forEach((chunk, index) => {
-                 const lowerChunkText = chunk.text.toLowerCase();
-                 let score = 0;
-
-                 // 1. Exact Phrase Match
-                 if (lowerChunkText.includes(lowerQuery)) {
-                     score += 0.5; 
-                 }
-
-                 // 2. Term Density (Vector Similarity Sim)
-                 let termMatches = 0;
-                 queryTerms.forEach(term => {
-                     const matches = lowerChunkText.split(term).length - 1;
-                     if (matches > 0) termMatches += 1 + (matches * 0.1);
-                 });
-                 
-                 if (queryTerms.length > 0) {
-                     score += (termMatches / (queryTerms.length * 2)) * 0.5; 
-                 }
-
-                 if (recallMethod === 'keyword' && !lowerChunkText.includes(lowerQuery)) score = 0;
-                 if (recallMethod === 'vector') {
-                     if (score > 0) score += (Math.random() * 0.05);
-                 }
-
-                 if (score >= minScore) {
-                     if (enableRerank) score = Math.min(0.99, score + (Math.random() * 0.1));
-                     
-                     results.push({
-                         id: `res-${file.id}-${chunk.id}`,
-                         text: chunk.text, 
-                         source: file.name,
-                         score: score,
-                         chunkIndex: index
-                     });
-                 }
-             });
-          });
-
-          const sorted = results.sort((a,b) => b.score - a.score);
-          
-          setAllSearchResults(sorted);
-          const endTime = performance.now();
-          setSearchMeta({
-              time: (endTime - startTime) / 1000,
-              tokens: searchQuery.length + sorted.reduce((acc, r) => acc + r.text.length, 0),
-              reqId: `req-${Math.random().toString(16).substr(2, 8)}`
-          });
-          setIsSearching(false);
-      }, 400);
-  };
-
-  const handleLoadMore = () => {
-      setVisibleResultsCount(prev => prev + 10);
-  };
-
-  const HighlightedText = ({ text, query }: { text: string, query: string }) => {
-      if (!query) return <span>{text}</span>;
-      const terms = query.split(/\s+/).filter(t => t.length > 0).map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-      if (terms.length === 0) return <span>{text}</span>;
-
-      const pattern = new RegExp(`(${terms.join('|')})`, 'gi');
-      const parts = text.split(pattern);
-
-      return (
-          <span>
-              {parts.map((part, i) => 
-                  terms.some(t => new RegExp(t, 'i').test(part))
-                  ? <span key={i} className="bg-yellow-500/30 text-yellow-200 font-bold px-0.5 rounded-sm">{part}</span> 
-                  : part
-              )}
-          </span>
-      );
   };
 
   const currentFiles = project.knowledgeBaseFiles.filter(f => f.kbId === selectedKbId);
-  
-  const filteredList = currentFiles.filter(f => {
-      if (activeTab === 'files') return !f.type.includes('note') && !f.type.includes('html');
-      if (activeTab === 'notes') return f.type.includes('note');
-      if (activeTab === 'urls') return f.type.includes('html');
-      return false;
-  });
-
-  const visibleResults = allSearchResults.slice(0, visibleResultsCount);
 
   return (
     <div className="flex h-full animate-fade-in gap-4">
        {showSettings && activeKb && (
            <RagSettingsModal 
                 config={activeKb} 
-                onSave={handleSaveSettings} 
+                onSave={(c) => {
+                    setProject(p => ({
+                        ...p, agentConfig: { ...p.agentConfig, ragConfigs: p.agentConfig.ragConfigs.map(k => k.id === c.id ? c : k) }
+                    }));
+                    setShowSettings(false);
+                }} 
                 onClose={() => setShowSettings(false)} 
            />
        )}
 
-       {/* LEFT SIDEBAR: KB List */}
        <div className="w-64 bg-[#151b28] border border-slate-700 rounded-xl flex flex-col overflow-hidden shadow-lg hidden md:flex">
-           <div className="p-4 border-b border-slate-700 bg-[#0f1219]">
-               <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-2">知识库列表</h3>
-               <button 
-                  onClick={handleAddKb}
-                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-bold transition-colors flex items-center justify-center gap-2"
-               >
-                   <span>+</span> 新建知识库
-               </button>
+           <div className="p-4 bg-[#0f1219] border-b border-slate-700">
+               <h3 className="font-bold text-slate-300">知识库</h3>
            </div>
-           <div className="flex-1 overflow-y-auto p-2 space-y-1">
+           <div className="flex-1 p-2 space-y-1">
                {ragConfigs.map(kb => (
-                   <div 
-                      key={kb.id}
-                      onClick={() => setSelectedKbId(kb.id)}
-                      className={`group p-3 rounded-lg cursor-pointer border transition-all ${
-                          selectedKbId === kb.id 
-                          ? 'bg-slate-800 border-indigo-500/50' 
-                          : 'bg-transparent border-transparent hover:bg-slate-800/50'
-                      }`}
-                   >
-                       <div className="flex justify-between items-start mb-1">
-                           <h4 className={`text-sm font-medium truncate ${selectedKbId === kb.id ? 'text-white' : 'text-slate-400'}`}>{kb.name}</h4>
-                           <div className="flex items-center gap-2">
-                               <div 
-                                  onClick={(e) => handleToggleKb(kb.id, e)}
-                                  className={`w-6 h-3 rounded-full relative transition-colors cursor-pointer ${kb.enabled ? 'bg-emerald-500' : 'bg-slate-600'}`}
-                                  title={kb.enabled ? '已启用' : '已禁用'}
-                               >
-                                  <div className={`w-2 h-2 bg-white rounded-full absolute top-0.5 transition-all ${kb.enabled ? 'right-0.5' : 'left-0.5'}`}></div>
-                               </div>
-                           </div>
-                       </div>
-                       <div className="flex justify-between items-center text-[10px] text-slate-500">
-                           <span className="truncate max-w-[80px]">{kb.embeddingModel.split('/').pop()}</span>
-                           <button 
-                              onClick={(e) => handleDeleteKb(kb.id, e)}
-                              className="opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity"
-                           >
-                               删除
-                           </button>
-                       </div>
+                   <div key={kb.id} onClick={() => setSelectedKbId(kb.id)} className={`p-3 rounded cursor-pointer ${selectedKbId === kb.id ? 'bg-slate-800 border border-emerald-500/50' : 'hover:bg-slate-800/50'}`}>
+                       <div className="text-sm font-bold text-slate-200">{kb.name}</div>
+                       <div className="text-xs text-slate-500">{kb.chunkingStrategy || 'semantic'} mode</div>
                    </div>
                ))}
            </div>
        </div>
 
-       {/* MAIN CONTENT */}
        <div className="flex-1 flex flex-col bg-[#1e293b] rounded-xl border border-slate-700 shadow-xl overflow-hidden">
-           {/* Header */}
            {activeKb ? (
-               <div className="h-16 border-b border-slate-700 px-6 flex items-center justify-between bg-[#151b28]">
-                   <div>
-                       <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                           {activeKb.name}
-                           {!activeKb.enabled && <span className="bg-slate-700 text-slate-400 text-[10px] px-2 py-0.5 rounded">已禁用</span>}
-                       </h2>
-                       <div className="flex gap-4 text-xs text-slate-400">
-                           <span className="flex items-center gap-1">模型: <span className="text-emerald-400">{activeKb.embeddingModel}</span></span>
-                           <span className="flex items-center gap-1">分段大小: <span className="text-indigo-400">{activeKb.chunkSize || 512}</span></span>
+               <>
+                   <div className="h-16 border-b border-slate-700 px-6 flex items-center justify-between bg-[#151b28]">
+                       <h2 className="font-bold text-white">{activeKb.name}</h2>
+                       <button onClick={() => setShowSettings(true)} className="p-2 bg-slate-800 rounded">⚙️ 设置</button>
+                   </div>
+                   <div className="p-6 flex-1 overflow-y-auto">
+                       <div className="mb-4">
+                           <input type="file" onChange={(e) => e.target.files && processFile(e.target.files[0])} className="hidden" id="upload" />
+                           <label htmlFor="upload" className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded cursor-pointer inline-block">上传文件</label>
+                       </div>
+                       <div className="space-y-2">
+                           {currentFiles.map(f => (
+                               <div key={f.id} className="bg-slate-800/50 p-3 rounded flex justify-between">
+                                   <span>{f.name}</span>
+                                   <span className="text-slate-500 text-sm">{f.totalChunks} 切片 ({activeKb.chunkingStrategy || 'semantic'})</span>
+                               </div>
+                           ))}
                        </div>
                    </div>
-                   <button 
-                      onClick={() => setShowSettings(true)}
-                      className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white transition-colors border border-slate-700"
-                      title="知识库设置"
-                   >
-                       ⚙️ 设置
-                   </button>
-               </div>
-           ) : (
-               <div className="h-16 border-b border-slate-700 px-6 flex items-center bg-[#151b28]">
-                   <span className="text-slate-500">未选择知识库</span>
-               </div>
-           )}
-
-           {/* Tabs */}
-           <div className="px-6 pt-4 border-b border-slate-700 bg-[#1e293b]">
-               <div className="flex gap-6 text-sm font-medium">
-                   {[
-                       {id: 'files', label: '文件'}, 
-                       {id: 'notes', label: '笔记'}, 
-                       {id: 'urls', label: '链接'}
-                   ].map(tab => (
-                       <button 
-                          key={tab.id}
-                          onClick={() => setActiveTab(tab.id as any)}
-                          className={`pb-3 border-b-2 transition-all capitalize ${activeTab === tab.id ? 'text-emerald-500 border-emerald-500' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
-                       >
-                           {tab.label} <span className="ml-1 bg-slate-800 text-[10px] px-1.5 rounded-full text-slate-400">
-                               {currentFiles.filter(f => {
-                                   if (tab.id === 'files') return !f.type.includes('note') && !f.type.includes('html');
-                                   if (tab.id === 'notes') return f.type.includes('note');
-                                   return f.type.includes('html');
-                               }).length}
-                           </span>
-                       </button>
-                   ))}
-                   <button 
-                      onClick={() => setActiveTab('test')}
-                      className={`pb-3 border-b-2 transition-all flex items-center gap-2 ${activeTab === 'test' ? 'text-blue-400 border-blue-400 font-bold' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
-                   >
-                       召回测试
-                   </button>
-               </div>
-           </div>
-
-           {/* Content Body */}
-           <div className="flex-1 overflow-hidden relative bg-[#0f172a]/50">
-               
-               {/* --- SEARCH TEST TAB --- */}
-               {activeTab === 'test' && (
-                   <div className="flex h-full">
-                       {/* Left: Search Area */}
-                       <div className="flex-1 flex flex-col p-6 border-r border-slate-700 overflow-hidden">
-                           <div className="text-center mb-6 mt-2">
-                               <h1 className="text-2xl font-bold text-white mb-6 tracking-tight">知识检索</h1>
-                               <div className="relative max-w-2xl mx-auto">
-                                   <input 
-                                      value={searchQuery}
-                                      onChange={(e) => setSearchQuery(e.target.value)}
-                                      onKeyDown={(e) => e.key === 'Enter' && performSearch()}
-                                      placeholder="请输入搜索内容..."
-                                      className="w-full h-12 pl-4 pr-12 rounded-lg border border-blue-500/50 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-lg shadow-blue-900/10 placeholder-slate-400"
-                                   />
-                                   <button 
-                                      onClick={performSearch}
-                                      className="absolute right-1 top-1 bottom-1 w-10 bg-blue-600 hover:bg-blue-500 rounded-md flex items-center justify-center text-white transition-colors"
-                                   >
-                                       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                                   </button>
-                               </div>
-                           </div>
-
-                           <div className="flex-1 overflow-hidden flex flex-col max-w-4xl mx-auto w-full">
-                               {/* Result Header */}
-                               <div className="flex items-center gap-4 text-xs text-slate-500 mb-4 px-2 font-mono">
-                                   <span>检索结果: {allSearchResults.length} 个</span>
-                                   {allSearchResults.length > 0 && (
-                                       <>
-                                           <span className="border-l border-slate-700 pl-4">耗时 {searchMeta.time.toFixed(3)} s</span>
-                                           <span className="border-l border-slate-700 pl-4">Token {searchMeta.tokens}</span>
-                                           <span className="border-l border-slate-700 pl-4 truncate max-w-[150px]">ID {searchMeta.reqId}</span>
-                                       </>
-                                   )}
-                               </div>
-
-                               {/* Results List */}
-                               <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4 pb-4">
-                                   {isSearching ? (
-                                       <div className="space-y-4">
-                                           {[1,2,3].map(i => (
-                                               <div key={i} className="bg-white/5 rounded-lg p-4 animate-pulse">
-                                                   <div className="h-4 bg-slate-700 rounded w-1/3 mb-3"></div>
-                                                   <div className="h-3 bg-slate-700/50 rounded w-full mb-2"></div>
-                                                   <div className="h-3 bg-slate-700/50 rounded w-2/3"></div>
-                                               </div>
-                                           ))}
-                                       </div>
-                                   ) : visibleResults.length > 0 ? (
-                                       <>
-                                           {visibleResults.map((res, idx) => (
-                                               <div key={res.id} className="bg-transparent hover:bg-slate-800/30 p-4 rounded-lg transition-colors border-b border-slate-800/50 last:border-0 group">
-                                                   <div className="flex justify-between items-start mb-2">
-                                                       <div className="flex items-center gap-2">
-                                                            <h4 className="text-sm font-bold text-slate-200">{idx + 1}. {res.source}</h4>
-                                                            <span className="text-[10px] text-slate-500 font-mono bg-slate-900 px-1 rounded">切片 #{res.chunkIndex}</span>
-                                                       </div>
-                                                       <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">得分: {res.score.toFixed(4)}</span>
-                                                   </div>
-                                                   <div className="text-sm text-slate-300 leading-relaxed font-serif whitespace-pre-line">
-                                                       <HighlightedText text={res.text} query={searchQuery} />
-                                                   </div>
-                                               </div>
-                                           ))}
-
-                                           {/* LOAD MORE BUTTON */}
-                                           {visibleResultsCount < allSearchResults.length && (
-                                               <div className="pt-2 pb-4 text-center">
-                                                   <button 
-                                                       onClick={handleLoadMore}
-                                                       className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-full text-xs font-bold transition-all border border-slate-600 shadow-lg"
-                                                   >
-                                                       ↓ 加载更多 (剩余 {allSearchResults.length - visibleResultsCount})
-                                                   </button>
-                                               </div>
-                                           )}
-                                       </>
-                                   ) : (
-                                       <div className="text-center text-slate-500 py-10">
-                                           {searchQuery ? "未找到相关切片" : "请输入关键词开始检索"}
-                                       </div>
-                                   )}
-                               </div>
-                           </div>
-                       </div>
-
-                       {/* Right: Settings Panel (Dark Theme) */}
-                       <div className="w-80 bg-[#0f1219] border-l border-slate-700 text-slate-200 flex flex-col">
-                           <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-[#151b28]">
-                               <h3 className="font-bold text-slate-200">检索参数设置</h3>
-                               <button className="text-slate-500 hover:text-blue-400" title="重置">
-                                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                               </button>
-                           </div>
-                           
-                           <div className="p-4 overflow-y-auto flex-1 space-y-6 custom-scrollbar">
-                               {/* Recall Settings */}
-                               <div>
-                                   <h4 className="text-sm font-bold text-slate-400 mb-3">召回设置</h4>
-                                   
-                                   <div className="space-y-3">
-                                       <div className="flex justify-between items-center cursor-pointer">
-                                           <label className="text-sm text-slate-500">召回方式</label>
-                                           <span className="text-slate-500 text-xs transform -rotate-90">›</span>
-                                       </div>
-                                       
-                                       {/* Recall Method Selection */}
-                                       <div className="border border-slate-700 rounded-lg p-3 bg-slate-800/50 space-y-3">
-                                           <label className="flex items-start gap-2 cursor-pointer group">
-                                               <input type="radio" name="recall" checked={recallMethod === 'hybrid'} onChange={() => setRecallMethod('hybrid')} className="mt-1 text-blue-500 focus:ring-blue-500 bg-slate-900 border-slate-600" />
-                                               <div>
-                                                   <span className="block text-sm font-bold text-slate-300 group-hover:text-white">混合检索</span>
-                                                   <span className="block text-xs text-slate-500 mt-1">结合向量检索与关键词检索，返回两种结果中最匹配用户问题的文件。</span>
-                                                   
-                                                   {recallMethod === 'hybrid' && (
-                                                       <div className="mt-2 animate-fade-in">
-                                                           <div className="flex justify-between text-xs text-slate-500 mb-1">
-                                                               <span>向量检索占比</span>
-                                                               <span>{vectorRatio}</span>
-                                                           </div>
-                                                           <input 
-                                                              type="range" min="0" max="1" step="0.1" 
-                                                              value={vectorRatio} onChange={(e) => setVectorRatio(parseFloat(e.target.value))}
-                                                              className="w-full h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                                                           />
-                                                       </div>
-                                                   )}
-                                               </div>
-                                           </label>
-
-                                           <label className="flex items-start gap-2 cursor-pointer group">
-                                               <input type="radio" name="recall" checked={recallMethod === 'vector'} onChange={() => setRecallMethod('vector')} className="mt-1 text-blue-500 focus:ring-blue-500 bg-slate-900 border-slate-600" />
-                                               <div>
-                                                   <span className="block text-sm font-bold text-slate-300 group-hover:text-white">向量检索</span>
-                                                   <span className="block text-xs text-slate-500 mt-1">通过向量化方式进行问题和文本段落的向量相似度匹配。</span>
-                                               </div>
-                                           </label>
-
-                                           <label className="flex items-start gap-2 cursor-pointer group">
-                                               <input type="radio" name="recall" checked={recallMethod === 'keyword'} onChange={() => setRecallMethod('keyword')} className="mt-1 text-blue-500 focus:ring-blue-500 bg-slate-900 border-slate-600" />
-                                               <div>
-                                                   <span className="block text-sm font-bold text-slate-300 group-hover:text-white">关键词检索</span>
-                                                   <span className="block text-xs text-slate-500 mt-1">根据用户关键词精确匹配文本。</span>
-                                               </div>
-                                           </label>
-                                       </div>
-                                   </div>
-                               </div>
-
-                               {/* Parameters */}
-                               <div className="space-y-4">
-                                   <div className="flex justify-between items-center">
-                                       <span className="text-sm text-slate-400">Rerank (重排) ⓘ</span>
-                                       <div 
-                                          onClick={() => setEnableRerank(!enableRerank)}
-                                          className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${enableRerank ? 'bg-blue-600' : 'bg-slate-700'}`}
-                                       >
-                                           <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${enableRerank ? 'right-0.5' : 'left-0.5'}`}></div>
-                                       </div>
-                                   </div>
-
-                                   <div>
-                                       <div className="flex justify-between text-sm text-slate-400 mb-2">
-                                           <span>召回数量 (Top K) ⓘ</span>
-                                           <span className="border border-slate-700 px-2 rounded bg-slate-800 text-xs py-0.5 text-slate-300">{topK}</span>
-                                       </div>
-                                       <input 
-                                          type="range" min="10" max="100" 
-                                          value={topK} onChange={(e) => setTopK(parseInt(e.target.value))}
-                                          className="w-full h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                                       />
-                                       <div className="text-[10px] text-slate-500 mt-1 text-right">当前显示: {visibleResultsCount}</div>
-                                   </div>
-
-                                   <div>
-                                       <div className="flex justify-between text-sm text-slate-400 mb-2">
-                                           <span>召回分数 (Min Score) ⓘ</span>
-                                           <span className="border border-slate-700 px-2 rounded bg-slate-800 text-xs py-0.5 text-slate-300">{minScore}</span>
-                                       </div>
-                                       <input 
-                                          type="range" min="0" max="1" step="0.05"
-                                          value={minScore} onChange={(e) => setMinScore(parseFloat(e.target.value))}
-                                          className="w-full h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                                       />
-                                   </div>
-
-                                   <div className="flex justify-between items-center opacity-50">
-                                       <span className="text-sm text-slate-400">QA干预 ⓘ</span>
-                                       <div className="w-10 h-5 rounded-full bg-slate-700 relative"><div className="w-4 h-4 bg-slate-400 rounded-full absolute top-0.5 left-0.5"></div></div>
-                                   </div>
-                               </div>
-
-                               {/* Filters */}
-                               <div>
-                                   <h4 className="text-sm font-bold text-slate-400 mb-3">文件范围</h4>
-                                   <div className="flex justify-between items-center">
-                                       <span className="text-sm text-slate-400">按标签筛选 ⓘ</span>
-                                       <div className="w-10 h-5 rounded-full bg-slate-700 relative"><div className="w-4 h-4 bg-slate-400 rounded-full absolute top-0.5 left-0.5"></div></div>
-                                   </div>
-                               </div>
-                           </div>
-                       </div>
-                   </div>
-               )}
-
-               {/* --- FILES/NOTES/URLS TABS --- */}
-               {activeTab !== 'test' && (
-                   <div className="h-full flex flex-col p-6">
-                       {/* Actions */}
-                       <div className="flex justify-between mb-4">
-                           <div className="text-sm text-slate-400 flex items-center gap-2">
-                               {activeTab === 'files' && '管理您的源文件文档。'}
-                               {activeTab === 'notes' && '快速记录想法与灵感。'}
-                               {activeTab === 'urls' && '抓取网页内容建立索引。'}
-                           </div>
-
-                           {activeTab === 'files' && (
-                               <>
-                                 <input type="file" ref={fileInputRef} onChange={handleFileSelect} multiple className="hidden" />
-                                 <button 
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium px-4 py-2 rounded-lg flex items-center gap-2 shadow-lg shadow-emerald-900/20"
-                                 >
-                                    <span>+</span> 上传文件
-                                 </button>
-                               </>
-                           )}
-                           {activeTab === 'notes' && (
-                               <div className="flex gap-2 w-1/2">
-                                   <input value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="输入笔记内容..." className="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-1 text-sm text-white focus:border-emerald-500 focus:outline-none" onKeyDown={(e) => e.key === 'Enter' && handleAddNote()} />
-                                   <button onClick={handleAddNote} className="bg-slate-700 hover:bg-slate-600 px-3 rounded text-white text-sm">添加</button>
-                               </div>
-                           )}
-                           {activeTab === 'urls' && (
-                               <div className="flex gap-2 w-1/2">
-                                   <input value={newUrl} onChange={(e) => setNewUrl(e.target.value)} placeholder="https://..." className="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-1 text-sm text-white focus:border-emerald-500 focus:outline-none" onKeyDown={(e) => e.key === 'Enter' && handleAddUrl()} />
-                                   <button onClick={handleAddUrl} className="bg-slate-700 hover:bg-slate-600 px-3 rounded text-white text-sm">抓取</button>
-                               </div>
-                           )}
-                       </div>
-
-                       {/* List */}
-                       <div 
-                         className={`flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-2 ${activeTab === 'files' && dragActive ? 'bg-emerald-900/10 border-2 border-dashed border-emerald-500 rounded-xl' : ''}`}
-                         onDragEnter={activeTab === 'files' ? handleDrag : undefined}
-                         onDragLeave={activeTab === 'files' ? handleDrag : undefined}
-                         onDragOver={activeTab === 'files' ? handleDrag : undefined}
-                         onDrop={activeTab === 'files' ? handleDrop : undefined}
-                       >
-                           {filteredList.length === 0 ? (
-                                <div className="text-center text-slate-500 py-20">
-                                    {activeTab === 'files' && '拖拽文件到这里 (txt, md, json).'}
-                                    {activeTab === 'notes' && '暂无笔记。'}
-                                    {activeTab === 'urls' && '暂无链接。'}
-                                </div>
-                           ) : (
-                               filteredList.map(file => (
-                                   <div key={file.id} className="bg-slate-800/50 border border-slate-700 rounded-lg p-3 group hover:border-slate-600 transition-all">
-                                       <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-10 h-10 rounded flex items-center justify-center font-bold text-sm ${
-                                                    file.type.includes('note') ? 'bg-indigo-900/50 text-indigo-400' :
-                                                    file.type.includes('html') ? 'bg-blue-900/50 text-blue-400' :
-                                                    'bg-slate-700 text-slate-300'
-                                                }`}>
-                                                    {file.type.includes('note') ? 'TXT' : file.type.includes('html') ? 'WEB' : file.name.split('.').pop()?.toUpperCase().substring(0,3)}
-                                                </div>
-                                                <div>
-                                                    <h4 className="text-slate-200 text-sm font-medium line-clamp-1">{file.name}</h4>
-                                                    <p className="text-xs text-slate-500">{file.uploadDate} · {file.size} · {file.totalChunks || 0} 切片</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                {file.status === 'indexed' ? (
-                                                    <div className="flex items-center gap-2 text-xs text-emerald-500 bg-emerald-900/20 px-2 py-0.5 rounded">
-                                                        <span>已索引</span>
-                                                    </div>
-                                                ) : file.status === 'processing' ? (
-                                                    <div className="flex items-center gap-2 text-xs text-amber-500 bg-amber-900/20 px-2 py-0.5 rounded">
-                                                        <span className="animate-spin">⟳</span> 处理中...
-                                                    </div>
-                                                ) : (
-                                                    <div className="text-xs text-red-500">错误</div>
-                                                )}
-                                                
-                                                <button 
-                                                    className="text-slate-500 hover:text-emerald-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity" 
-                                                    title="重新索引" 
-                                                    onClick={() => handleReindex(file.id)}
-                                                    disabled={reindexingId === file.id || file.status === 'processing'}
-                                                >
-                                                    <svg className={`w-4 h-4 ${reindexingId === file.id ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                                    </svg>
-                                                </button>
-
-                                                <button 
-                                                    className="text-slate-500 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity" 
-                                                    title="删除" 
-                                                    onClick={() => handleDeleteFile(file.id)}
-                                                >
-                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                                </button>
-                                            </div>
-                                       </div>
-                                       
-                                       {/* Processing Progress Bar */}
-                                       {file.status === 'processing' && typeof file.progress === 'number' && (
-                                           <div className="mt-3">
-                                               <div className="flex justify-between text-[10px] text-slate-400 mb-1">
-                                                   <span>切片与本地索引中... (无需API)</span>
-                                                   <span>{Math.round(file.progress)}%</span>
-                                               </div>
-                                               <div className="w-full h-1 bg-slate-700 rounded-full overflow-hidden">
-                                                   <div 
-                                                       className="h-full bg-emerald-500 transition-all duration-300 ease-out" 
-                                                       style={{ width: `${file.progress}%` }}
-                                                   ></div>
-                                               </div>
-                                           </div>
-                                       )}
-                                   </div>
-                               ))
-                           )}
-                       </div>
-                   </div>
-               )}
-
-           </div>
+               </>
+           ) : <div className="p-6 text-slate-500">选择知识库</div>}
        </div>
     </div>
   );
 };
-
 export default StepKnowledgeBase;
