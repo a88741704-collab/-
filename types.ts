@@ -113,11 +113,14 @@ export interface ProjectState {
   title: string;
   genre: string;
   coreIdea: string;
+  ideaCritique?: string; // New
   settings: string;
   settingsCritique: string;
   characters: Character[];
+  characterCritique?: string; // New
   detailedOutline: string;
-  volumes: Volume[]; // New: List of volumes
+  outlineCritique?: string; // New
+  volumes: Volume[]; 
   chapters: Chapter[];
   currentChapterId?: string;
   knowledgeBase: string[];

@@ -15,7 +15,7 @@ const StepWorldReview: React.FC<Props> = ({ project, setProject, onNext }) => {
 
   const handleCritique = async () => {
     setLoading(true);
-    setProject({ ...project, agentStatus: 'thinking', agentTask: 'Agent 正在进行深度逻辑审查与卖点分析...' });
+    setProject({ ...project, agentStatus: 'thinking', agentTask: 'Mephisto 正在进行深度逻辑审查与卖点分析...' });
     try {
       const critique = await critiqueSettings(project.settings, project.agentConfig);
       setProject({ ...project, settingsCritique: critique, agentStatus: 'idle', agentTask: '审查报告已生成' });
@@ -27,10 +27,6 @@ const StepWorldReview: React.FC<Props> = ({ project, setProject, onNext }) => {
       setLoading(false);
     }
   };
-
-  // Helper to visually categorize the raw settings text (Simulation of structured data)
-  // In a real app, we would parse the markdown or request JSON from the Agent.
-  // Here we provide a rich text area that encourages the user to structure it.
   
   return (
     <div className="h-full flex flex-col max-w-6xl mx-auto space-y-4 animate-fade-in">
@@ -43,15 +39,15 @@ const StepWorldReview: React.FC<Props> = ({ project, setProject, onNext }) => {
              <button 
                 onClick={handleCritique}
                 disabled={loading}
-                className="px-4 py-2 bg-pink-900/30 hover:bg-pink-900/50 border border-pink-700/50 rounded-lg text-pink-300 font-medium text-xs flex items-center gap-2 transition-all"
+                className="px-4 py-2 bg-red-900/20 hover:bg-red-900/40 border border-red-800/50 rounded-lg text-red-400 font-medium text-xs flex items-center gap-2 transition-all"
              >
                 {loading ? (
                     <>
-                        <span className="animate-spin">⟳</span> 分析中...
+                        <span className="animate-spin">⟳</span> 审判中...
                     </>
                 ) : (
                     <>
-                        <span>🧐</span> 深度审查 Agent
+                        <span>🩸</span> Mephisto 审判
                     </>
                 )}
              </button>
@@ -73,10 +69,10 @@ const StepWorldReview: React.FC<Props> = ({ project, setProject, onNext }) => {
             📖 设定集 (Wiki)
           </button>
           <button 
-            className={`pb-3 px-2 transition-all ${activeTab === 'critique' ? 'text-pink-400 border-b-2 border-pink-400' : 'text-slate-500 hover:text-slate-300'}`}
+            className={`pb-3 px-2 transition-all ${activeTab === 'critique' ? 'text-red-400 border-b-2 border-red-400' : 'text-slate-500 hover:text-slate-300'}`}
             onClick={() => setActiveTab('critique')}
           >
-            📝 审查报告
+            👹 审判报告
           </button>
       </div>
 
@@ -127,19 +123,19 @@ const StepWorldReview: React.FC<Props> = ({ project, setProject, onNext }) => {
           )}
 
           {activeTab === 'critique' && (
-              <div className="w-full h-full bg-slate-900/50 p-0 relative">
+              <div className="w-full h-full bg-[#120a0a] p-0 relative overflow-hidden">
                   {!project.settingsCritique ? (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500">
-                          <span className="text-4xl mb-4">🧐</span>
-                          <p>暂无审查报告</p>
-                          <p className="text-sm mt-2 opacity-70">点击右上角的按钮运行审查 Agent</p>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-600">
+                          <span className="text-4xl mb-4 opacity-50">👹</span>
+                          <p>暂无审判报告</p>
+                          <p className="text-sm mt-2 opacity-50">点击右上角按钮召唤 Mephisto</p>
                       </div>
                   ) : (
-                      <textarea
-                        className="w-full h-full bg-transparent text-pink-100/90 resize-none focus:outline-none font-sans leading-relaxed p-8 text-sm"
-                        value={project.settingsCritique}
-                        readOnly
-                      />
+                      <div className="h-full overflow-y-auto p-8 custom-scrollbar">
+                           <div className="prose prose-invert max-w-none prose-headings:text-red-400 prose-p:text-slate-300">
+                               <div className="whitespace-pre-wrap">{project.settingsCritique}</div>
+                           </div>
+                      </div>
                   )}
               </div>
           )}

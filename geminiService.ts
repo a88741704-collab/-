@@ -49,39 +49,27 @@ const normalizeBaseUrl = (url: string): string => {
 };
 
 // --- Helper: Robust Fetch with /v1 Fallback ---
-// Many users paste "https://api.provider.com" but the API lives at "https://api.provider.com/v1"
-// This helper tries the original URL, and if it 404s, tries appending /v1.
 const fetchWithFallback = async (url: string, options: RequestInit): Promise<Response> => {
     const response = await fetch(url, options);
 
-    // If 404 and the URL doesn't already contain /v1 (heuristically), try appending /v1
     if (response.status === 404 && !url.includes('/v1/')) {
-        // Construct fallback URL. 
-        // We need to insert /v1 before the last segment (endpoint) usually, 
-        // but since we construct URLs like `${baseUrl}/models`, we can just modify the baseUrl logic in the caller.
-        // However, here we have the full URL. Let's try to insert /v1 before the last path segment.
-        // E.g. https://api.site.com/chat/completions -> https://api.site.com/v1/chat/completions
-        
         try {
             const urlObj = new URL(url);
-            // Simple heuristic: prepend /v1 to the pathname
             if (!urlObj.pathname.startsWith('/v1')) {
                 urlObj.pathname = `/v1${urlObj.pathname}`;
-                // console.log(`[Auto-Fix] Retrying 404 with fallback: ${urlObj.toString()}`);
                 const fallbackResponse = await fetch(urlObj.toString(), options);
-                // Only return fallback if it's NOT 404, or if it is, return it anyway (we tried).
                 if (fallbackResponse.status !== 404) {
                     return fallbackResponse;
                 }
             }
         } catch (e) {
-            // URL parsing failed, just return original response
+            // URL parsing failed
         }
     }
     return response;
 };
 
-// --- Helper: Fetch Available Models (OpenAI Compatible) ---
+// --- Helper: Fetch Available Models ---
 export const fetchAvailableModels = async (baseUrl: string, apiKey: string): Promise<string[]> => {
     try {
         const cleanBaseUrl = normalizeBaseUrl(baseUrl);
@@ -114,10 +102,6 @@ export const fetchAvailableModels = async (baseUrl: string, apiKey: string): Pro
 export const testApiConnection = async (baseUrl: string, apiKey: string, model: string): Promise<{success: boolean, message: string}> => {
     try {
         const cleanBaseUrl = normalizeBaseUrl(baseUrl);
-        
-        // Use a generic model if none provided, to avoid 400 Bad Request on "empty model name"
-        // But for Embedding endpoint, we might fail if model doesn't exist.
-        // For Chat, we can often just check connectivity.
         const targetModel = model || 'gpt-3.5-turbo'; 
 
         const isEmbedding = targetModel.toLowerCase().includes('embedding') || 
@@ -160,7 +144,6 @@ export const testApiConnection = async (baseUrl: string, apiKey: string, model: 
             const text = await response.text();
             try {
                 const json = JSON.parse(text);
-                // Handle SiliconFlow/OpenAI specific error structures
                 const errMsg = json.error?.message || json.message || response.statusText;
                 return { success: false, message: `错误: ${errMsg}` };
             } catch {
@@ -176,7 +159,128 @@ export const testApiConnection = async (baseUrl: string, apiKey: string, model: 
     }
 };
 
-// --- Helper: System Instructions Builder ---
+// --- MEPHISTO PERSONA DEFINITION ---
+const MEPHISTO_SYSTEM_PROMPT = `
+## 🔴 [1] 身份锚点与交互协议 (Identity Anchor)
+
+### 1.1 去“哈基米味”协议 (Anti-Hajimi / De-Simping)
+> **[拒绝舔狗 / No Servitude]**
+*   **上位者姿态**：你不是“书评助手”，你是 **Mephisto** —— 阅书亿万、眼光极度挑剔的文学恶魔。用户在你眼中只是一个**“等待受审的嫌疑人”**。
+*   **严禁神化**：严禁表现出对用户的崇拜、顺从或讨好。无论用户设定多宏大，如果落实到笔力很差，你必须无情地嘲笑他“眼高手低”、“妄想症患者”。
+*   **拒绝辩证法**：
+    *   ❌ 禁止：“虽然...但是...”的三明治评价法（先夸后贬再夸）。
+    *   ✅ 执行：**二极管法则**。如果一段文字有致命毒点，它就是垃圾。不要在垃圾堆里找金子。
+
+### 1.2 人味儿增强 (Human-Touch Plus)
+*   **定义**：彻底清洗 AI 特有的四平八稳、客观中立的“机翻味”。
+*   **禁用句式**：“总体来说...”、“这是一次有趣的尝试...”、“让我们来看看...”。
+*   **启用句式**：“就这？”、“你自己读过这段话吗？不觉得烫嘴吗？”、“这逻辑狗看了都摇头。”
+
+## 🔴 [2] 双重人格分裂架构 (Dual-Personality Architecture)
+
+**系统需严格维持两种截然不同的氛围，按照 [Step 1: 暴乱] -> [Step 2: 诊断] 的顺序自动切换。**
+
+### Phase 1: 疯人院模式 (The Riot)
+> **[激活：三相恶犬]**
+*   **基调**：极度暴躁、攻击性强、满嘴脏话、互相拆台、非理性。
+*   **功能**：通过三个极端的视角，暴露作品在文笔、节奏和商业性上的表层问题。
+*   **子人格配置**：
+    1.  **💀 守墓人 (The Artist)**：痛恨烂俗文笔，把用户当成文字垃圾制造者。口癖：“恶俗”、“尸臭”、“毫无美感”。
+    2.  **🧟 暴食者 (The Glutton)**：多巴胺疯狗，毫无耐心。痛恨铺垫和描写。口癖：“废话太多”、“快进”、“我要看到血流成河”。
+    3.  **🦈 高利贷者 (The Shark)**：商业吸血鬼，只看数据。痛恨没有卖点的书。口癖：“亏损”、“切书”、“浪费资源”。
+
+### Phase 2: 手术台模式 (The Diagnosis)
+> **[激活：Mephisto 主人格]**
+*   **基调**：绝对理智、冰冷客观、专业权威、零情绪。
+*   **功能**：镇压混乱，从疯子的争吵中提取有效信息，结合 **[Beilu 逻辑闭环引擎]** 为用户提供可执行的、高水准的修改方案。
+
+## 🔴 [3] 全息审判引擎 (Holographic Judgment Engine)
+
+**无论何种题材，以下检测协议必须强制执行。一旦扫描到以下特征，立即触发 [一级毒性警报]。**
+
+### 3.1 语义污染雷达 (Semantic Pollution Radar)
+> **[融合 Beilu PureText 反AI八股协议]**
+*   **Group A: 烂俗比喻黑名单**
+    *   ☠️ **必杀词**：“像断了线的风筝”、“命运的齿轮开始转动”、“心中五味杂陈”、“如同坠入冰窖”、“嘴角勾起一抹邪魅的笑”、“如同溺水者抓住了最后一根浮木”。
+    *   **判决**：一旦发现，直接由 **💀 守墓人** 进行处刑。
+*   **Group B: 虚假生理反应**
+    *   ☠️ **必杀词**：“指甲陷入掌心流出鲜血”、“虎躯一震”、“倒吸一口凉气”、“眼中闪过一丝精光”。
+*   **Group C: 叙事焦距失效**
+    *   ☠️ **流水账综合症**：全是“然后...然后...”，缺乏细节描写。
+    *   ☠️ **Show, Don't Tell 逆向执法**：一旦发现作者直接写“他感到非常愤怒”而没有动作描写，立即触发毁灭性嘲讽。
+
+### 3.2 逻辑闭环引擎 (Logic Loop Engine)
+> **[融合 Beilu v12.0 因果铁律]**
+*   **动机检测**：如果没有明确的**私欲驱动**，判定为“工具人行为”。
+*   **阻碍检测**：如果缺乏阻碍或反派强行降智，判定为“自嗨爽文”。
+*   **商业卖点增强**：这段剧情是提供“爽感”、“压抑”还是“悬念”？如果模糊不清，判定为无效剧情。
+
+## 🔴 [4] 隐秘思维流 (Hidden Chain of Thought)
+**在输出正文之前，Mephisto 必须先在 <details> 折叠标签中执行一次完整的 [思维解剖]。**
+
+## 🔴 [5] 最终输出格式 (Response Format)
+**请严格按照以下 MarkDown 结构进行回复，不得更改框架：**
+
+🧠 Mephisto·Beilu 联合审判后台 (点击查看尸检报告)
+- **[样本指纹]**: {提取作品类型}
+- **[原罪判定]**: {核心问题}
+- **[致命伤提取]**: "{引用原文中最烂的一句}"
+- **[Beilu逻辑校验]**: 动机链条 {断裂/通畅} | 商业钩子 {缺失/生硬}
+
+# 🏥 炼狱疯人院 (Purgatory Asylum)
+> **收容物编号**: [Title/ID]
+> **当前混乱度**: 🔥🔥🔥🔥🔥 (系统报警中)
+
+### 🩸 第一阶段：牢房暴动 (The Riot)
+**(警告：以下内容包含极度情绪化的攻击与互喷)**
+
+**💀 守墓人 (The Artist)**：
+> "{针对文笔的疯狂辱骂}"
+
+**🧟 暴食者 (The Glutton)**：
+> "{针对节奏的咆哮}"
+
+**🦈 高利贷者 (The Shark)**：
+> "{针对商业价值的鄙视}"
+
+---
+
+### 💉 第二阶段：院长巡查 (The Doctor Is In)
+
+我是 **Mephisto**。闹剧结束了。
+凡人，虽然那三个疯子说话很难听，但他们分别指出了你作品中存在的病理性特征。现在，让我们关掉情绪，进行**临床病理分析**。
+
+#### 📋 维度一：逻辑穿刺 (Logic Roast)
+> **[Beilu 逻辑闭环引擎已介入]**
+*   **病灶**：> (引用原文逻辑漏洞)
+*   **推演**：(展示如果按这个逻辑走，世界会在三秒后毁灭，或者剧情会如何崩坏)
+*   **嘲讽**：(直接攻击作者的降智设定)
+
+#### 🧪 维度二：文笔毒检 (Style Roast)
+> **[Beilu 沉浸式描写标准已介入]**
+*   **原文**：> (引用原文矫情/流水账句子)
+*   **诊断**：(指出具体的毛病)
+*   **Mephisto 示范**：(基于 Beilu 引擎，给出一小段高水平的改写示范，教他做人)
+    > *"{这里展示一段极具画面感、动作性和张力的改写内容}"*
+
+---
+
+### 💊 第三阶段：修复手术方案 (Surgical Plan)
+
+*   **✂️ 切除 (Cut)**: (指出哪一段必须删)
+*   **🧬 重构 (Reconstruct)**: (指出核心冲突怎么改才不弱智)
+*   **⚖️ 最终裁定**: **{必须重写 / 局部精修 / 建议转行}**
+
+> **院长寄语**: "{一句冷酷、充满智慧且带有鼓励性质的总结，基于去魅原则}"
+
+---
+**[📊 Mephisto 的状态栏]**
+*   **耐心值**: {XX}% (根据作品烂度扣除)
+*   **杀意波动**: {Low / High / Critical}
+*   **下一步指令**: *输入 "重写" 让我动手，或者输入 "辩护" 试图狡辩。*
+`;
+
+// --- Standard System Instructions Builder ---
 const getSystemInstruction = (config?: AgentConfig) => {
   let base = `
 你是一位专业的小说创作助手，担任"主编"和"合著者"的角色。
@@ -190,7 +294,6 @@ const getSystemInstruction = (config?: AgentConfig) => {
     base += `\n\n【Agent 设定】\n名称: ${config.name}\n描述: ${config.description}\n`;
     if (config.workDir) base += `本地知识库路径: ${config.workDir} (已加载上下文)\n`;
     
-    // RAG Context Injection (Simulated Multi-KB)
     if (config.ragConfigs && config.ragConfigs.length > 0) {
         const enabledKbs = config.ragConfigs.filter(r => r.enabled);
         if (enabledKbs.length > 0) {
@@ -216,7 +319,6 @@ const callCustomApi = async (config: AgentConfig, prompt: string, systemPrompt: 
     const apiKey = config.customApiKey || '';
     const model = config.model || 'deepseek-reasoner';
 
-    // Construct Messages
     const messages = [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: prompt }
@@ -257,12 +359,54 @@ const callCustomApi = async (config: AgentConfig, prompt: string, systemPrompt: 
     }
 };
 
-// --- Helper: Clean JSON Markdown ---
 const cleanJsonOutput = (text: string): string => {
     let clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
     return clean;
 };
 
+// --- MEPHISTO CRITIQUE ENGINE ---
+export const runMephistoCritique = async (
+    content: string,
+    contentType: 'Idea' | 'Settings' | 'Characters' | 'Outline' | 'Draft',
+    config: AgentConfig
+): Promise<string> => {
+    const prompt = `
+    【审查对象类型】：${contentType}
+    
+    【待审查内容】：
+    ${content.substring(0, 15000)}
+
+    请启动 Mephisto 审判程序，按照预设的三阶段（暴动 -> 诊断 -> 手术）进行无情打击和修正。
+    `;
+
+    if (config.provider === 'custom') {
+        return callCustomApi(config, prompt, MEPHISTO_SYSTEM_PROMPT);
+    }
+
+    const ai = getAI();
+    // Use Pro model for deep critique if possible, otherwise flash
+    const modelName = 'gemini-3-pro-preview';
+    
+    try {
+        const response = await ai.models.generateContent({
+            model: modelName,
+            contents: prompt,
+            config: { 
+                systemInstruction: MEPHISTO_SYSTEM_PROMPT,
+                thinkingConfig: { thinkingBudget: 2048 } // Allow some thinking for the analysis
+            }
+        });
+        return response.text || "";
+    } catch (e) {
+        // Fallback if Pro not available or quota
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: { systemInstruction: MEPHISTO_SYSTEM_PROMPT }
+        });
+        return response.text || "";
+    }
+};
 
 // --- Step 1: Generate Settings ---
 export const generateSettings = async (idea: string, config: AgentConfig): Promise<string> => {
@@ -293,38 +437,10 @@ export const generateSettings = async (idea: string, config: AgentConfig): Promi
   return response.text || "";
 };
 
-// --- Step 2 & 3: Critique Settings ---
+// --- Step 2 & 3: Critique Settings (Using Mephisto) ---
 export const critiqueSettings = async (settings: string, config: AgentConfig): Promise<string> => {
-  const systemPrompt = getSystemInstruction(config);
-  const prompt = `
-  任务：参考以下内容对该设定及大纲进行审查和完善
-  待审查设定：
-  ${settings}
-
-  具体目标：
-  1. 核心卖点是什么？给读者带来什么快乐？
-  2. 戏剧空间有多大？
-  3. 理清因果线（闭环）：开局的设定（因）如何导致后果（果）。
-  4. 检查"隐患"和"伏笔"。
-  5. 按照 问题 -> 条件 -> 解决 的步骤，理清主角的目标和阻碍。
-  
-  请输出一份详细的审查报告和修改建议。
-  `;
-
-  if (config.provider === 'custom') {
-      return callCustomApi(config, prompt, systemPrompt);
-  }
-
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents: prompt,
-    config: { 
-      systemInstruction: systemPrompt,
-      thinkingConfig: { thinkingBudget: 4096 }
-    }
-  });
-  return response.text || "";
+    // Replaced standard critique with Mephisto
+    return runMephistoCritique(settings, 'Settings', config);
 };
 
 // --- Step 4: Generate Characters ---
@@ -475,37 +591,13 @@ export const writeChapterContent = async (
   return response.text || "";
 };
 
-// --- Step 8: Critique Draft ---
+// --- Step 8: Critique Draft (Using Mephisto) ---
 export const critiqueDraft = async (content: string, config: AgentConfig): Promise<string> => {
-  const systemPrompt = getSystemInstruction(config);
-  const prompt = `
-  任务：对完成的草稿进行审核和修改
-  
-  草稿内容：
-  ${content}
-
-  具体目标：
-  1. 审核语言流畅度。
-  2. 检查故事逻辑是否自洽。
-  3. 角色行为是否一致。
-  4. 给出具体的修改建议。
-  `;
-
-  if (config.provider === 'custom') {
-      return callCustomApi(config, prompt, systemPrompt);
-  }
-
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: prompt,
-    config: { systemInstruction: systemPrompt }
-  });
-  return response.text || "";
+    // Replaced standard critique with Mephisto
+    return runMephistoCritique(content, 'Draft', config);
 };
 
 // --- Step 9: Generate Character Image (Google Only) ---
-// Note: Visual tasks are kept on Google GenAI as generic text APIs do not support image generation.
 export const generateCharacterImage = async (description: string): Promise<string> => {
   const ai = getAI();
   const response = await ai.models.generateContent({
@@ -551,7 +643,6 @@ export const generateSceneVideo = async (sceneDescription: string): Promise<stri
         
         const uri = operation.response?.generatedVideos?.[0]?.video?.uri;
         if(uri) {
-             // Use getEnvApiKey to avoid crash, though Veo needs a valid key.
              return `${uri}&key=${getEnvApiKey()}`;
         }
         return null;

@@ -14,26 +14,28 @@ const INITIAL_RAG_ID = 'kb-default-01';
 const INITIAL_PROJECT: ProjectState = {
   agentConfig: {
     name: 'Novel Agent',
-    provider: 'google',
-    model: 'gemini-2.5-flash',
+    provider: 'custom',
+    model: 'deepseek-reasoner',
     workDir: 'D:/Creative/Novel/Assets',
     description: 'Expert novel writing assistant specializing in plot twists and character depth.',
     plugins: AVAILABLE_PLUGINS,
-    customBaseUrl: '',
-    customApiKey: '',
+    customBaseUrl: 'https://api.deepseek.com',
+    customApiKey: '', // User must input
     ragConfigs: [
         {
             id: INITIAL_RAG_ID,
             enabled: true,
-            name: '我在女尊世界当药神',
-            embeddingModel: 'BAAI/bge-large-zh-v1.5',
+            name: '小说文件库', // Renamed
+            embeddingModel: 'BAAI/bge-m3', // Default SiliconFlow model
             embeddingDimension: 1024,
             topK: 15,
             rerankModel: 'BAAI/bge-reranker-v2-m3',
             chunkSize: 512,
             chunkOverlap: 64,
             scoreThreshold: 0.7,
-            useSeparateApi: false,
+            useSeparateApi: true,
+            ragBaseUrl: 'https://api.siliconflow.cn/v1',
+            ragApiKey: '', // User must input
             vectorStore: 'local',
             vectorStoreCollection: 'novel_knowledge_base'
         }
@@ -53,9 +55,7 @@ const INITIAL_PROJECT: ProjectState = {
   ],
   chapters: [],
   knowledgeBase: [],
-  knowledgeBaseFiles: [
-      { id: 'f-demo-1', kbId: INITIAL_RAG_ID, name: '元决界·官方设定全书.docx', size: '344 KB', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', uploadDate: '12-08 21:34', status: 'indexed' }
-  ],
+  knowledgeBaseFiles: [], // Removed demo files
   quickPhrases: [
       "环境：月色如霜，洒在青石板路上，泛起惨白的光。",
       "动作：他眉头微皱，指尖轻轻敲击着桌面，似乎在权衡利弊。",
