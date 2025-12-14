@@ -31,6 +31,10 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
   const [showPluginForm, setShowPluginForm] = useState(false);
   const [newPlugin, setNewPlugin] = useState<Partial<AgentPlugin>>({ name: '', description: '', systemPromptAddon: '' });
 
+  // Edit Plugin State
+  const [editingPluginId, setEditingPluginId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{description: string, prompt: string}>({description: '', prompt: ''});
+
   const updateConfig = (updates: Partial<AgentConfig>) => {
     setConfig({ ...config, ...updates });
   };
@@ -40,6 +44,23 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
       p.id === id ? { ...p, active: !p.active } : p
     );
     updateConfig({ plugins: newPlugins });
+  };
+
+  const startEditing = (plugin: AgentPlugin) => {
+    setEditingPluginId(plugin.id);
+    setEditForm({ description: plugin.description, prompt: plugin.systemPromptAddon });
+  };
+
+  const savePluginEdit = () => {
+    if(!editingPluginId) return;
+    const updatedPlugins = config.plugins.map(p => {
+        if (p.id === editingPluginId) {
+            return { ...p, description: editForm.description, systemPromptAddon: editForm.prompt };
+        }
+        return p;
+    });
+    updateConfig({ plugins: updatedPlugins });
+    setEditingPluginId(null);
   };
 
   const handleAddPlugin = () => {
@@ -369,32 +390,71 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
               
               <div className="grid grid-cols-2 gap-4">
                  {config.plugins.map(plugin => (
-                   <div key={plugin.id} className={`border rounded-xl p-4 bg-slate-800/30 transition-colors ${plugin.active ? 'border-emerald-500/50' : 'border-slate-700 hover:border-slate-500'}`}>
-                      <div className="flex justify-between mb-2">
-                         <h3 className="font-bold text-white">{plugin.name}</h3>
-                         <div className="flex gap-1">
-                             {plugin.isCustom && <span className="bg-indigo-900 text-indigo-300 text-xs px-2 py-0.5 rounded">Custom</span>}
-                             <span className="bg-blue-900 text-blue-300 text-xs px-2 py-0.5 rounded">Agent</span>
-                         </div>
-                      </div>
-                      <div className="flex gap-2 mb-3">
-                        <span className="bg-slate-700 text-slate-400 text-xs px-2 py-0.5 rounded">ai-specialists</span>
-                      </div>
-                      <p className="text-slate-400 text-xs mb-4 line-clamp-2">{plugin.description}</p>
-                      <button 
-                        onClick={() => togglePlugin(plugin.id)}
-                        className={`w-full py-2 rounded text-sm font-bold flex items-center justify-center gap-2 transition-colors ${
-                          plugin.active 
-                           ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-700' 
-                           : 'bg-emerald-600 text-white hover:bg-emerald-500'
-                        }`}
-                      >
-                         {plugin.active ? (
-                           <>✓ 已安装</>
-                         ) : (
-                           <>↓ 安装</>
-                         )}
-                      </button>
+                   <div key={plugin.id} className={`border rounded-xl p-4 bg-slate-800/30 transition-colors ${plugin.active ? 'border-emerald-500/50' : 'border-slate-700 hover:border-slate-500'} relative group`}>
+                      {editingPluginId === plugin.id ? (
+                          <div className="space-y-3 animate-fade-in relative z-10">
+                              <div>
+                                  <label className="text-xs text-emerald-400 block mb-1">Editing: {plugin.name}</label>
+                              </div>
+                              <div>
+                                  <label className="text-xs text-slate-500 block">Description</label>
+                                  <input 
+                                      value={editForm.description}
+                                      onChange={(e) => setEditForm({...editForm, description: e.target.value})}
+                                      className="w-full bg-black/50 border border-slate-600 rounded p-2 text-xs text-white"
+                                  />
+                              </div>
+                              <div>
+                                  <label className="text-xs text-slate-500 block">System Prompt Addon</label>
+                                  <textarea 
+                                      value={editForm.prompt}
+                                      onChange={(e) => setEditForm({...editForm, prompt: e.target.value})}
+                                      className="w-full h-24 bg-black/50 border border-slate-600 rounded p-2 text-xs text-white font-mono"
+                                  />
+                              </div>
+                              <div className="flex gap-2 justify-end">
+                                  <button onClick={() => setEditingPluginId(null)} className="px-3 py-1 bg-slate-700 rounded text-xs text-white">取消</button>
+                                  <button onClick={savePluginEdit} className="px-3 py-1 bg-emerald-600 rounded text-xs text-white">保存修改</button>
+                              </div>
+                          </div>
+                      ) : (
+                          <>
+                              <button 
+                                  onClick={() => startEditing(plugin)}
+                                  className="absolute top-2 right-2 text-slate-500 hover:text-white p-1 opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                                  title="Edit Plugin"
+                              >
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                              </button>
+                              
+                              <div className="flex justify-between mb-2">
+                                 <h3 className="font-bold text-white">{plugin.name}</h3>
+                                 <div className="flex gap-1 pr-6">
+                                     {plugin.isCustom && <span className="bg-indigo-900 text-indigo-300 text-xs px-2 py-0.5 rounded">Custom</span>}
+                                     <span className="bg-blue-900 text-blue-300 text-xs px-2 py-0.5 rounded">Agent</span>
+                                 </div>
+                              </div>
+                              <div className="flex gap-2 mb-3">
+                                <span className="bg-slate-700 text-slate-400 text-xs px-2 py-0.5 rounded">ai-specialists</span>
+                              </div>
+                              <p className="text-slate-400 text-xs mb-4 line-clamp-2" title={plugin.description}>{plugin.description}</p>
+                              <p className="text-slate-600 text-[10px] mb-4 line-clamp-1 font-mono">{plugin.systemPromptAddon}</p>
+                              <button 
+                                onClick={() => togglePlugin(plugin.id)}
+                                className={`w-full py-2 rounded text-sm font-bold flex items-center justify-center gap-2 transition-colors ${
+                                  plugin.active 
+                                   ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-700' 
+                                   : 'bg-emerald-600 text-white hover:bg-emerald-500'
+                                }`}
+                              >
+                                 {plugin.active ? (
+                                   <>✓ 已安装</>
+                                 ) : (
+                                   <>↓ 安装</>
+                                 )}
+                              </button>
+                          </>
+                      )}
                    </div>
                  ))}
               </div>

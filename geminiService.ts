@@ -17,7 +17,12 @@ const getAI = () => new GoogleGenAI({ apiKey: getEnvApiKey() });
 // --- Helper: Test API Connection ---
 export const testApiConnection = async (baseUrl: string, apiKey: string, model: string): Promise<{success: boolean, message: string}> => {
     try {
-        const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
+        let cleanBaseUrl = baseUrl.replace(/\/+$/, '').trim();
+        // Auto-prepend https if missing
+        if (!cleanBaseUrl.startsWith('http')) {
+            cleanBaseUrl = `https://${cleanBaseUrl}`;
+        }
+
         const url = `${cleanBaseUrl}/chat/completions`;
         
         // Simple test request
@@ -27,6 +32,8 @@ export const testApiConnection = async (baseUrl: string, apiKey: string, model: 
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
+            mode: 'cors',
+            credentials: 'omit',
             body: JSON.stringify({
                 model: model,
                 messages: [{ role: 'user', content: 'Hi' }],
@@ -46,6 +53,10 @@ export const testApiConnection = async (baseUrl: string, apiKey: string, model: 
             }
         }
     } catch (e: any) {
+        console.error("API Test Failed", e);
+        if (e.name === 'TypeError' && e.message === 'Failed to fetch') {
+            return { success: false, message: '跨域(CORS)限制或网络不可达。请确保 API 地址支持浏览器直接访问(HTTPS)，或检查您的网络/代理设置。' };
+        }
         return { success: false, message: `网络错误: ${e.message || '无法连接到服务器'}` };
     }
 };
@@ -79,7 +90,11 @@ const getSystemInstruction = (config?: AgentConfig) => {
 
 // --- Helper: Custom OpenAI-Compatible API Caller ---
 const callCustomApi = async (config: AgentConfig, prompt: string, systemPrompt: string, jsonMode: boolean = false): Promise<string> => {
-    const baseUrl = config.customBaseUrl?.replace(/\/+$/, '') || 'https://api.deepseek.com';
+    let baseUrl = config.customBaseUrl?.replace(/\/+$/, '').trim() || 'https://api.deepseek.com';
+    if (!baseUrl.startsWith('http')) {
+        baseUrl = `https://${baseUrl}`;
+    }
+    
     const apiKey = config.customApiKey || '';
     const model = config.model || 'deepseek-reasoner';
 
@@ -96,6 +111,8 @@ const callCustomApi = async (config: AgentConfig, prompt: string, systemPrompt: 
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
+            mode: 'cors',
+            credentials: 'omit',
             body: JSON.stringify({
                 model: model,
                 messages: messages,
@@ -114,8 +131,11 @@ const callCustomApi = async (config: AgentConfig, prompt: string, systemPrompt: 
         const data = await response.json();
         const content = data.choices?.[0]?.message?.content || "";
         return content;
-    } catch (e) {
+    } catch (e: any) {
         console.error("Custom API Call Failed", e);
+        if (e.name === 'TypeError' && e.message === 'Failed to fetch') {
+            throw new Error('网络请求失败(CORS)。请检查 API 地址是否支持浏览器跨域访问，或尝试使用 Gemini 模型。');
+        }
         throw e;
     }
 };
