@@ -46,8 +46,18 @@
   }
 }
 </script>
+<script>
+  // Polyfill for process.env to prevent "process is not defined" errors in browser
+  window.process = {
+    env: {
+      NODE_ENV: 'production',
+      API_KEY: '' // Prevent crash, actual key handling is done in code
+    }
+  };
+</script>
 </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>

@@ -1,8 +1,18 @@
 import { GoogleGenAI, Schema, Type } from "@google/genai";
 import { ProjectState, Character, Chapter, AgentConfig } from './types';
 
+// Helper to safely get API Key from process.env if available, or return empty string
+const getEnvApiKey = () => {
+    try {
+        // @ts-ignore
+        return (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
+    } catch (e) {
+        return '';
+    }
+};
+
 // Initialize the API client - always creates a new instance to pick up the latest key
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getAI = () => new GoogleGenAI({ apiKey: getEnvApiKey() });
 
 // --- Helper: Test API Connection ---
 export const testApiConnection = async (baseUrl: string, apiKey: string, model: string): Promise<{success: boolean, message: string}> => {
@@ -405,7 +415,8 @@ export const generateSceneVideo = async (sceneDescription: string): Promise<stri
         
         const uri = operation.response?.generatedVideos?.[0]?.video?.uri;
         if(uri) {
-             return `${uri}&key=${process.env.API_KEY}`;
+             // Use getEnvApiKey to avoid crash, though Veo needs a valid key.
+             return `${uri}&key=${getEnvApiKey()}`;
         }
         return null;
 
