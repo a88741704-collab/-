@@ -41,7 +41,7 @@ const normalizeBaseUrl = (url: string): string => {
         }
     }
 
-    if (!clean.startsWith('http')) {
+    if (!clean.startsWith('http') && !clean.startsWith('/')) {
         clean = `https://${clean}`;
     }
     
@@ -54,7 +54,7 @@ const fetchWithFallback = async (url: string, options: RequestInit): Promise<Res
 
     if (response.status === 404 && !url.includes('/v1/')) {
         try {
-            const urlObj = new URL(url);
+            const urlObj = new URL(url, window.location.origin);
             if (!urlObj.pathname.startsWith('/v1')) {
                 urlObj.pathname = `/v1${urlObj.pathname}`;
                 const fallbackResponse = await fetch(urlObj.toString(), options);
@@ -153,7 +153,10 @@ export const testApiConnection = async (baseUrl: string, apiKey: string, model: 
     } catch (e: any) {
         console.error("API Test Failed", e);
         if (e.name === 'TypeError' && e.message === 'Failed to fetch') {
-            return { success: false, message: '跨域(CORS)限制或网络不可达。' };
+            return { 
+                success: false, 
+                message: '网络不可达 (CORS)。请尝试使用 Proxy 地址 (如 /proxy/deepseek) 作为 Base URL。' 
+            };
         }
         return { success: false, message: `网络错误: ${e.message}` };
     }
@@ -385,7 +388,7 @@ const callCustomApi = async (config: AgentConfig, prompt: string, systemPrompt: 
     } catch (e: any) {
         console.error("Custom API Call Failed", e);
         if (e.name === 'TypeError' && e.message === 'Failed to fetch') {
-            throw new Error('网络请求失败(CORS)。请检查 API 地址是否支持浏览器跨域访问。');
+            throw new Error('网络请求失败(CORS)。请检查 API 地址是否支持浏览器跨域访问，或使用 Proxy 地址。');
         }
         throw e;
     }

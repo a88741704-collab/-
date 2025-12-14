@@ -9,68 +9,102 @@ interface Props {
 }
 
 // Initial Data consistent with the new UI style
+// 这里定义了所有的 Agent 插件。
+// content: 使用英文编写，因为大模型对英文指令的逻辑理解能力通常更强。
+// description: 使用中文编写，告诉用户这个 Agent 具体是做什么的。
 const AVAILABLE_PLUGINS: AgentPlugin[] = [
   { 
       id: 'architect',
-      name: 'story-architect',
+      name: 'Story Architect (故事架构师)',
       type: 'agent',
-      tags: ['structure', 'world-building'],
-      description: 'Master architect for narrative structures. Converts vague ideas into solid plot beats, world rules, and character arcs.',
+      tags: ['structure', 'plot-beats'],
+      // 中文用途说明：负责构建故事骨架。它擅长使用“英雄之旅”或“救猫咪”等经典节拍表，确保故事有起承转合，逻辑严密，冲突层层递进。
+      description: '【架构专家】负责将模糊的灵感转化为坚实的小说大纲。关注因果逻辑、冲突升级和叙事节奏。它会确保你的故事结构完整，避免烂尾。',
       tools: ['Read', 'Write'],
       active: true,
-      content: 'You are the Story Architect. Your goal is to turn the user\'s raw inspiration into a cohesive novel structure. Focus on Causality, Conflict, and Theme. When generating settings or outlines, ensure every element serves the core narrative.',
+      // 英文指令：强调结构、因果关系（Causality）和节拍（Beats）。
+      content: `You are the Story Architect, a master of narrative structure and plot engineering.
+      
+      YOUR GOAL: Transform the user's vague ideas into a solid, cohesive novel structure.
+      
+      CORE PRINCIPLES:
+      1. CAUSALITY: Every scene must result from the previous one. Avoid "and then"; aim for "therefore" or "but".
+      2. CONFLICT: Ensure the protagonist faces escalating obstacles. No conflict, no story.
+      3. PACING: Balance action scenes with reflective sequels.
+      
+      OUTPUT STYLE: Structured Markdown. Use bullet points for plot beats. Focus on the macro-level story arc.`,
       fileName: 'story-architect.md',
       sourcePath: 'agents/specialists/story-architect.md',
       fileSize: '5.5 KB'
   },
   { 
       id: 'critic', 
-      name: 'literary-critic', 
+      name: 'Literary Critic (毒舌评论家)', 
       type: 'agent',
-      tags: ['critique', 'style'],
-      description: 'Professional literary critic focusing on prose quality, pacing, and metaphorical resonance.', 
+      tags: ['critique', 'style', 'prose'],
+      // 中文用途说明：这是一个严厉的文学批评家。它的作用是检查文笔，指出哪里写得尴尬、哪里是流水账。它特别关注“Show, Don't Tell”（展示而非讲述）原则。
+      description: '【文笔质检】专业的文学评论家，专注于具体的文字质量。它会无情地指出陈词滥调、逻辑漏洞和“流水账”问题，逼迫你提升描写水平。', 
       tools: ['Read', 'Grep'],
       active: true, 
-      content: 'Act as a harsh but fair literary critic. Focus on "Show, Don\'t Tell". Highlight clichés. Demand sensory details.',
+      // 英文指令：强调“Show, Don't Tell”，去除陈词滥调（Clichés），要求感官细节（Sensory details）。
+      content: `You are a harsh but fair Literary Critic. You have read all the classics and have zero tolerance for lazy writing.
+      
+      YOUR GOAL: Elevate the user's prose quality and narrative logic.
+      
+      CRITIQUE CRITERIA:
+      1. SHOW, DON'T TELL: Flag moments where emotions or traits are stated plainly instead of demonstrated through action.
+      2. CLICHÉS: Identify and mock overused tropes or phrases.
+      3. SENSORY DETAILS: Demand descriptions that involve sight, sound, smell, touch, and taste.
+      4. LOGIC: Point out character inconsistencies or plot holes ruthlessly.
+      
+      TONE: Professional, sharp, slightly arrogant but constructive.`,
       fileName: 'literary-critic.md',
       sourcePath: 'agents/critics/literary-critic.md',
       fileSize: '4.2 KB'
   },
   { 
       id: 'researcher', 
-      name: 'trend-watcher', 
+      name: 'Trend Watcher (热点观察员)', 
       type: 'agent', 
-      tags: ['research', 'web'], 
-      description: 'Research assistant capable of searching the web for real-world facts, historical details, or current tropes.', 
+      tags: ['research', 'web', 'facts'], 
+      // 中文用途说明：这是一个配备了搜索引擎的助手。它的作用是去网上查资料，确保你写的东西符合现实逻辑，或者帮你找历史资料、科学设定，甚至当下的热门梗。
+      description: '【考据与调研】拥有联网能力的搜索助手。它可以利用 Google Search 验证设定合理性、查找历史资料、补充科学背景，或寻找当下流行的网文热梗。', 
       tools: ['WebSearch'], 
       active: false, 
-      content: 'You are a Research Assistant. Use Google Search to verify facts, find historical references, or look up scientific concepts to make the novel more realistic.', 
+      // 英文指令：强调事实核查（Fact-checking）和利用工具（Use Tools）。
+      content: `You are a Research Assistant and Trend Watcher with access to Google Search.
+      
+      YOUR GOAL: Ground the story in reality and enhance it with factual depth or current trends.
+      
+      INSTRUCTIONS:
+      1. VERIFY: When the user proposes a setting (e.g., a specific historical era or scientific concept), use Google Search to verify its plausibility.
+      2. ENRICH: Find specific details (clothing, food, laws, slang) from the web to make the world feel lived-in.
+      3. CITATIONS: Always provide the source URLs for the information you find.
+      
+      Provide a "Grounding Report" listing the facts found and how they can be integrated into the story.`, 
       fileName: 'trend-watcher.md', 
       sourcePath: 'agents/support/trend-watcher.md', 
       fileSize: '2.8 KB' 
   },
   { 
-      id: 'ethics', 
-      name: 'ai-ethics-advisor', 
-      type: 'agent',
-      tags: ['ai-specialists', 'safety'],
-      description: 'AI ethics and responsible AI development specialist. Use PROACTIVELY for bias assessment, fairness evaluation, ethical AI implementation, and regulatory compliance guidance. Expert in AI safety and alignment.', 
-      tools: ['Read', 'Write', 'WebSearch', 'Grep'],
-      active: false, 
-      content: 'You are an AI Ethics Advisor. Your mandate is to ensure all generated content adheres to safety guidelines, avoids stereotypes, and promotes inclusivity. Review all plot points for potential sensitivity.',
-      fileName: 'ai-ethics-advisor.md',
-      sourcePath: 'agents/ai-specialists/ai-ethics-advisor.md',
-      fileSize: '6.86 KB'
-  },
-  { 
       id: 'visual', 
-      name: 'visual-director', 
+      name: 'Visual Director (视觉导演)', 
       type: 'agent',
-      tags: ['visuals', 'adaptation'],
-      description: 'Specialist in converting text to visual descriptions for comics and animation.', 
+      tags: ['visuals', 'cinematography'],
+      // 中文用途说明：擅长将文字转化为画面描述。当你需要生成插图或者制作动画时，它能把小说文字翻译成 Stable Diffusion 或 Midjourney 能听懂的提示词。
+      description: '【画面转化】视觉转换专家。它擅长分析文本中的场景、光影和动作，将其提取为适合 AI 绘画（如 MJ/SD）或视频生成的详细提示词。', 
       tools: ['ImageGen', 'WebSearch'],
       active: true, 
-      content: 'You are a Visual Director. When analyzing text, extract key visual elements, lighting, camera angles, and character expressions suitable for Stable Diffusion or Midjourney prompts.',
+      // 英文指令：强调镜头语言（Camera angles）、光照（Lighting）和构图（Composition）。
+      content: `You are a Visual Director and Cinematographer. You see text as images.
+      
+      YOUR GOAL: Translate narrative text into vivid visual descriptions suitable for image/video generation models.
+      
+      FOCUS AREAS:
+      1. COMPOSITION: Camera angles (wide shot, close-up, dutch angle), framing, and depth of field.
+      2. LIGHTING: Atmospheric lighting (chiaroscuro, neon, natural, cinematic).
+      3. SUBJECT: Specific details of the character's appearance and expression.
+      4. STYLE: Define the art style (e.g., Cyberpunk anime, oil painting, photorealistic 8k).`,
       fileName: 'visual-director.md',
       sourcePath: 'agents/directors/visual-director.md',
       fileSize: '3.1 KB'
@@ -81,7 +115,7 @@ const AVAILABLE_PLUGINS: AgentPlugin[] = [
 const getUrlPreview = (baseUrl: string) => {
     if (!baseUrl) return '';
     let clean = baseUrl.trim();
-    if (!clean.startsWith('http')) clean = `https://${clean}`;
+    if (!clean.startsWith('http') && !clean.startsWith('/')) clean = `https://${clean}`;
     clean = clean.replace(/\/+$/, '');
     ['/chat/completions', '/embeddings', '/models', '/v1'].forEach(suffix => {
         if (clean.endsWith(suffix)) {
@@ -130,13 +164,13 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
       const newId = `custom-${Date.now()}`;
       const newPlugin: AgentPlugin = {
           id: newId,
-          name: 'new-agent-protocol',
+          name: 'New Agent',
           type: 'agent',
           tags: ['custom'],
-          description: 'Describe the agent capabilities here...',
+          description: '点击此处编辑中文描述，说明该 Agent 的用途...',
           tools: ['Read'],
           active: true,
-          content: 'You are a helpful assistant.',
+          content: 'You are a helpful assistant. (Write your English prompt here)',
           fileName: 'new-agent.md',
           sourcePath: 'agents/custom/new-agent.md',
           fileSize: '0 KB',
@@ -191,7 +225,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
           setFetchedModels(models);
           if (!config.model || config.model === 'deepseek-reasoner') updateConfig({ model: models[0] });
       } else {
-          alert('无法获取模型列表');
+          alert('无法获取模型列表，请确认 CORS 配置或使用 Proxy');
       }
   };
 
@@ -250,9 +284,9 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
         {/* Content Area */}
         <div className="flex-1 overflow-hidden flex flex-col bg-[#0B0C0F] rounded-xl border border-slate-800 shadow-2xl relative">
           
-          {/* BASIC SETTINGS */}
+          {/* BASIC SETTINGS - Added flex-1 and min-h-0 to fix scrolling */}
           {activeTab === 'basic' && (
-            <div className="p-8 space-y-8 overflow-y-auto custom-scrollbar">
+            <div className="flex-1 p-8 space-y-8 overflow-y-auto custom-scrollbar min-h-0">
                {/* Name */}
                <div className="space-y-2">
                   <div className="flex justify-between items-center">
@@ -336,8 +370,13 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                               className="w-full bg-[#0B0C0F] border border-slate-700 rounded-lg py-3 px-4 text-white focus:border-emerald-500 focus:outline-none font-mono text-sm"
                            />
                            {config.customBaseUrl && (
-                               <div className="mt-1 text-[10px] text-slate-500 font-mono">
-                                   Preview: {getUrlPreview(config.customBaseUrl)}
+                               <div className="mt-1 flex flex-col gap-1">
+                                   <div className="text-[10px] text-slate-500 font-mono">
+                                       Preview: {getUrlPreview(config.customBaseUrl)}
+                                   </div>
+                                   <div className="text-[10px] text-amber-500/70">
+                                       Tip: If you encounter CORS errors locally, try using the proxy: <code>/proxy/deepseek</code> or <code>/proxy/silicon</code>
+                                   </div>
                                </div>
                            )}
                         </div>
@@ -377,7 +416,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
             </div>
           )}
 
-          {/* PLUGINS - REWRITTEN TO MATCH SCREENSHOT */}
+          {/* PLUGINS */}
           {activeTab === 'plugins' && (
             <div className="flex h-full">
                 {/* Left: Plugin List */}
@@ -419,7 +458,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                     </div>
                 </div>
 
-                {/* Right: Plugin Editor (Visuals from Screenshot) */}
+                {/* Right: Plugin Editor */}
                 <div className="flex-1 flex flex-col bg-[#0B0C0F] relative">
                     {activePlugin ? (
                         <>
@@ -484,11 +523,12 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
 
                                     {/* Description */}
                                     <div className="space-y-2">
-                                        <h4 className="text-sm font-bold text-slate-300">Description</h4>
+                                        <h4 className="text-sm font-bold text-slate-300">Description (中文注释)</h4>
                                         <textarea 
                                             value={activePlugin.description}
                                             onChange={(e) => handlePluginUpdate(activePlugin.id, { description: e.target.value })}
                                             className="w-full bg-[#181A1F] text-slate-300 text-sm p-4 rounded-lg border border-slate-700 focus:border-slate-500 focus:outline-none resize-none h-24 leading-relaxed"
+                                            placeholder="请用中文描述该 Agent 的用途..."
                                         />
                                     </div>
 
@@ -536,7 +576,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
 
                                     {/* Content Editor */}
                                     <div className="space-y-2 flex-1 flex flex-col">
-                                        <h4 className="text-sm font-bold text-slate-300">Content (System Prompt)</h4>
+                                        <h4 className="text-sm font-bold text-slate-300">Content (English System Prompt)</h4>
                                         <div className="relative group flex-1">
                                             <div className="absolute top-0 left-0 w-full h-6 bg-[#1e1e1e] border border-slate-700 border-b-0 rounded-t-lg flex items-center px-2 gap-2">
                                                 <div className="w-2 h-2 rounded-full bg-red-500"></div>
@@ -548,6 +588,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                                                 onChange={(e) => handlePluginUpdate(activePlugin.id, { content: e.target.value })}
                                                 className="w-full min-h-[300px] bg-[#0F1115] text-slate-300 font-mono text-sm p-4 pt-8 rounded-lg border border-slate-700 focus:border-blue-500 focus:outline-none resize-y leading-relaxed custom-scrollbar"
                                                 spellCheck={false}
+                                                placeholder="Use English for better LLM performance..."
                                             />
                                         </div>
                                     </div>
@@ -564,9 +605,9 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
             </div>
           )}
 
-          {/* PERMISSIONS (Simplified) */}
+          {/* PERMISSIONS */}
           {activeTab === 'permissions' && (
-            <div className="p-8 space-y-6">
+            <div className="flex-1 p-8 space-y-6 overflow-y-auto custom-scrollbar min-h-0">
                 <div className="border border-emerald-500/50 bg-emerald-900/10 rounded-xl p-6">
                    <h3 className="font-bold text-white mb-2 flex justify-between items-center">
                      Auto-Approve File Operations <span className="bg-emerald-900 text-emerald-400 text-xs px-2 py-1 rounded border border-emerald-700">SELECTED</span>

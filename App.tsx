@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { PipelineStep, ProjectState } from './types';
 import StepConfiguration, { AVAILABLE_PLUGINS } from './components/StepConfiguration';
@@ -21,7 +20,7 @@ const INITIAL_PROJECT: ProjectState = {
     model: 'deepseek-reasoner',
     workDir: 'D:/Creative/Novel/Assets',
     description: 'Expert novel writing assistant specializing in plot twists and character depth.',
-    plugins: AVAILABLE_PLUGINS, // Uses the new structure from StepConfiguration
+    plugins: AVAILABLE_PLUGINS, 
     customBaseUrl: 'https://api.deepseek.com',
     customApiKey: '', 
     ragConfigs: [
@@ -98,8 +97,6 @@ export default function App() {
         const savedProject = await get(STORAGE_KEY);
         if (savedProject) {
           // Merge with initial to ensure new schema fields exist if updated
-          // We must handle the potential migration of old plugin structure to new one here if this was a prod app
-          // For now, simple merge. If plugins are incompatible, fallback to INITIAL
           const mergedPlugins = savedProject.agentConfig?.plugins?.[0]?.content 
               ? savedProject.agentConfig.plugins 
               : INITIAL_PROJECT.agentConfig.plugins;
@@ -184,7 +181,7 @@ export default function App() {
 
   if (!isLoaded) {
       return (
-          <div className="min-h-screen flex items-center justify-center bg-[#0f172a] text-slate-400">
+          <div className="h-screen w-screen flex items-center justify-center bg-[#0f172a] text-slate-400">
               <div className="flex flex-col items-center gap-4">
                   <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
                   <p>正在从本地数据库恢复数据...</p>
@@ -195,7 +192,7 @@ export default function App() {
 
   if (showWelcomeBlocker) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0f172a] text-slate-200">
+      <div className="h-screen w-screen flex items-center justify-center bg-[#0f172a] text-slate-200">
         <div className="max-w-md text-center p-8 bg-slate-800 rounded-2xl shadow-2xl border border-slate-700">
           <div className="w-16 h-16 bg-indigo-600 rounded-xl flex items-center justify-center font-bold text-2xl text-white shadow-lg mx-auto mb-6">N</div>
           <h1 className="text-2xl font-bold mb-4">欢迎使用 NovelCraft AI</h1>
@@ -223,8 +220,13 @@ export default function App() {
   const activeKbsCount = project.agentConfig.ragConfigs?.filter(r => r.enabled).length || 0;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0f172a] text-slate-200">
-      <header className="h-16 border-b border-slate-800 bg-[#0f172a]/80 backdrop-blur fixed w-full top-0 z-50 flex items-center px-6 justify-between shadow-sm">
+    // REFACTOR: Use h-screen w-screen and flex-col for the root container.
+    // This removes the dependency on fixed positioning and padding calculations,
+    // ensuring the main content area (flex-1) always calculates scroll height correctly.
+    <div className="h-screen w-screen flex flex-col bg-[#0f172a] text-slate-200 overflow-hidden">
+      
+      {/* Header is now a flex item, not fixed */}
+      <header className="h-16 shrink-0 border-b border-slate-800 bg-[#0f172a]/80 backdrop-blur flex items-center px-6 justify-between shadow-sm z-50">
         <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/30">N</div>
             <h1 className="text-lg font-bold tracking-tight text-white">NovelCraft <span className="text-indigo-400">AI</span></h1>
@@ -248,7 +250,8 @@ export default function App() {
         </div>
       </header>
 
-      <div className="flex flex-1 pt-16 h-screen overflow-hidden">
+      {/* Main Content Area */}
+      <div className="flex-1 flex overflow-hidden">
         <aside className="w-64 border-r border-slate-800 bg-[#151b28] flex flex-col hidden md:flex z-40">
             <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
                 <div className="space-y-1 mb-6">
