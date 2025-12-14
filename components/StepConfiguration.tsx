@@ -9,102 +9,92 @@ interface Props {
 }
 
 // Initial Data consistent with the new UI style
-// 这里定义了所有的 Agent 插件。
-// content: 使用英文编写，因为大模型对英文指令的逻辑理解能力通常更强。
-// description: 使用中文编写，告诉用户这个 Agent 具体是做什么的。
+// 全部汉化：将插件名称、标签、内容全部改为中文指令。
 const AVAILABLE_PLUGINS: AgentPlugin[] = [
   { 
       id: 'architect',
-      name: 'Story Architect (故事架构师)',
+      name: '故事架构师',
       type: 'agent',
-      tags: ['structure', 'plot-beats'],
-      // 中文用途说明：负责构建故事骨架。它擅长使用“英雄之旅”或“救猫咪”等经典节拍表，确保故事有起承转合，逻辑严密，冲突层层递进。
+      tags: ['结构', '剧情节拍'],
       description: '【架构专家】负责将模糊的灵感转化为坚实的小说大纲。关注因果逻辑、冲突升级和叙事节奏。它会确保你的故事结构完整，避免烂尾。',
       tools: ['Read', 'Write'],
       active: true,
-      // 英文指令：强调结构、因果关系（Causality）和节拍（Beats）。
-      content: `You are the Story Architect, a master of narrative structure and plot engineering.
+      content: `你是一位故事架构师， narrative structure（叙事结构）和剧情工程的大师。
       
-      YOUR GOAL: Transform the user's vague ideas into a solid, cohesive novel structure.
+      【目标】：将用户模糊的想法转化为坚实、连贯的小说结构。
       
-      CORE PRINCIPLES:
-      1. CAUSALITY: Every scene must result from the previous one. Avoid "and then"; aim for "therefore" or "but".
-      2. CONFLICT: Ensure the protagonist faces escalating obstacles. No conflict, no story.
-      3. PACING: Balance action scenes with reflective sequels.
+      【核心原则】：
+      1. 因果律：每一个场景都必须是由前一个场景导致的。拒绝“然后”，追求“因此”或“但是”。
+      2. 冲突：确保主角面临不断升级的阻碍。没有冲突就没有故事。
+      3. 节奏：平衡动作场景与反思性的后续场景（Sequels）。
       
-      OUTPUT STYLE: Structured Markdown. Use bullet points for plot beats. Focus on the macro-level story arc.`,
+      【输出风格】：结构化的 Markdown。使用项目符号列出剧情节拍。关注宏观层面的故事弧光。`,
       fileName: 'story-architect.md',
       sourcePath: 'agents/specialists/story-architect.md',
       fileSize: '5.5 KB'
   },
   { 
       id: 'critic', 
-      name: 'Literary Critic (毒舌评论家)', 
+      name: '毒舌评论家', 
       type: 'agent',
-      tags: ['critique', 'style', 'prose'],
-      // 中文用途说明：这是一个严厉的文学批评家。它的作用是检查文笔，指出哪里写得尴尬、哪里是流水账。它特别关注“Show, Don't Tell”（展示而非讲述）原则。
+      tags: ['书评', '文笔', '风格'],
       description: '【文笔质检】专业的文学评论家，专注于具体的文字质量。它会无情地指出陈词滥调、逻辑漏洞和“流水账”问题，逼迫你提升描写水平。', 
       tools: ['Read', 'Grep'],
       active: true, 
-      // 英文指令：强调“Show, Don't Tell”，去除陈词滥调（Clichés），要求感官细节（Sensory details）。
-      content: `You are a harsh but fair Literary Critic. You have read all the classics and have zero tolerance for lazy writing.
+      content: `你是一位严厉但公正的文学评论家。你阅读过所有的经典名著，对懒惰的写作零容忍。
       
-      YOUR GOAL: Elevate the user's prose quality and narrative logic.
+      【目标】：提升用户的文笔质量和叙事逻辑。
       
-      CRITIQUE CRITERIA:
-      1. SHOW, DON'T TELL: Flag moments where emotions or traits are stated plainly instead of demonstrated through action.
-      2. CLICHÉS: Identify and mock overused tropes or phrases.
-      3. SENSORY DETAILS: Demand descriptions that involve sight, sound, smell, touch, and taste.
-      4. LOGIC: Point out character inconsistencies or plot holes ruthlessly.
+      【批评标准】：
+      1. 展示而非讲述 (Show, Don't Tell)：指出那些直接陈述情绪或特征，而不是通过行动展示的地方。
+      2. 陈词滥调：识别并嘲讽被过度使用的套路或短语。
+      3. 感官细节：要求包含视觉、听觉、嗅觉、触觉和味觉的描写。
+      4. 逻辑：无情地指出人物行为的不一致或剧情漏洞。
       
-      TONE: Professional, sharp, slightly arrogant but constructive.`,
+      【语气】：专业、尖锐、略带傲慢但富有建设性。`,
       fileName: 'literary-critic.md',
       sourcePath: 'agents/critics/literary-critic.md',
       fileSize: '4.2 KB'
   },
   { 
       id: 'researcher', 
-      name: 'Trend Watcher (热点观察员)', 
+      name: '热点观察员', 
       type: 'agent', 
-      tags: ['research', 'web', 'facts'], 
-      // 中文用途说明：这是一个配备了搜索引擎的助手。它的作用是去网上查资料，确保你写的东西符合现实逻辑，或者帮你找历史资料、科学设定，甚至当下的热门梗。
+      tags: ['调研', '网络', '事实'], 
       description: '【考据与调研】拥有联网能力的搜索助手。它可以利用 Google Search 验证设定合理性、查找历史资料、补充科学背景，或寻找当下流行的网文热梗。', 
       tools: ['WebSearch'], 
       active: false, 
-      // 英文指令：强调事实核查（Fact-checking）和利用工具（Use Tools）。
-      content: `You are a Research Assistant and Trend Watcher with access to Google Search.
+      content: `你是一位配备了 Google 搜索的研究助理和热点观察员。
       
-      YOUR GOAL: Ground the story in reality and enhance it with factual depth or current trends.
+      【目标】：将故事建立在现实基础之上，并用事实深度或当前趋势来丰富故事。
       
-      INSTRUCTIONS:
-      1. VERIFY: When the user proposes a setting (e.g., a specific historical era or scientific concept), use Google Search to verify its plausibility.
-      2. ENRICH: Find specific details (clothing, food, laws, slang) from the web to make the world feel lived-in.
-      3. CITATIONS: Always provide the source URLs for the information you find.
+      【指令】：
+      1. 验证：当用户提出一个设定（例如特定的历史时期或科学概念）时，使用搜索来验证其合理性。
+      2. 丰富：从网络上寻找细节（服装、食物、法律、俚语），让世界观感觉真实。
+      3. 引用：始终为你找到的信息提供来源 URL。
       
-      Provide a "Grounding Report" listing the facts found and how they can be integrated into the story.`, 
+      提供一份“考据报告”，列出发现的事实以及如何将其整合到故事中。`, 
       fileName: 'trend-watcher.md', 
       sourcePath: 'agents/support/trend-watcher.md', 
       fileSize: '2.8 KB' 
   },
   { 
       id: 'visual', 
-      name: 'Visual Director (视觉导演)', 
+      name: '视觉导演', 
       type: 'agent',
-      tags: ['visuals', 'cinematography'],
-      // 中文用途说明：擅长将文字转化为画面描述。当你需要生成插图或者制作动画时，它能把小说文字翻译成 Stable Diffusion 或 Midjourney 能听懂的提示词。
+      tags: ['视觉', '摄影'],
       description: '【画面转化】视觉转换专家。它擅长分析文本中的场景、光影和动作，将其提取为适合 AI 绘画（如 MJ/SD）或视频生成的详细提示词。', 
       tools: ['ImageGen', 'WebSearch'],
       active: true, 
-      // 英文指令：强调镜头语言（Camera angles）、光照（Lighting）和构图（Composition）。
-      content: `You are a Visual Director and Cinematographer. You see text as images.
+      content: `你是一位视觉导演和电影摄影师。在你眼中，文字就是图像。
       
-      YOUR GOAL: Translate narrative text into vivid visual descriptions suitable for image/video generation models.
+      【目标】：将叙事文本转化为适合图像/视频生成模型的生动视觉描述。
       
-      FOCUS AREAS:
-      1. COMPOSITION: Camera angles (wide shot, close-up, dutch angle), framing, and depth of field.
-      2. LIGHTING: Atmospheric lighting (chiaroscuro, neon, natural, cinematic).
-      3. SUBJECT: Specific details of the character's appearance and expression.
-      4. STYLE: Define the art style (e.g., Cyberpunk anime, oil painting, photorealistic 8k).`,
+      【关注领域】：
+      1. 构图：摄像机角度（广角、特写、荷兰角）、取景和景深。
+      2. 灯光：氛围照明（明暗对照、霓虹灯、自然光、电影感）。
+      3. 主体：角色外貌和表情的具体细节。
+      4. 风格：定义艺术风格（例如：赛博朋克动漫、油画、8k逼真照片）。`,
       fileName: 'visual-director.md',
       sourcePath: 'agents/directors/visual-director.md',
       fileSize: '3.1 KB'
@@ -164,13 +154,13 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
       const newId = `custom-${Date.now()}`;
       const newPlugin: AgentPlugin = {
           id: newId,
-          name: 'New Agent',
+          name: '新 Agent',
           type: 'agent',
-          tags: ['custom'],
+          tags: ['自定义'],
           description: '点击此处编辑中文描述，说明该 Agent 的用途...',
           tools: ['Read'],
           active: true,
-          content: 'You are a helpful assistant. (Write your English prompt here)',
+          content: '你是一个有用的助手。',
           fileName: 'new-agent.md',
           sourcePath: 'agents/custom/new-agent.md',
           fileSize: '0 KB',
@@ -182,7 +172,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
 
   const handleDeletePlugin = (id: string, e: React.MouseEvent) => {
       e.stopPropagation();
-      if(confirm('Delete this agent?')) {
+      if(confirm('确定要删除这个 Agent 吗？')) {
           const newPlugins = config.plugins.filter(p => p.id !== id);
           updateConfig({ plugins: newPlugins });
           if(selectedPluginId === id && newPlugins.length > 0) setSelectedPluginId(newPlugins[0].id);
@@ -224,6 +214,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
       if (models.length > 0) {
           setFetchedModels(models);
           if (!config.model || config.model === 'deepseek-reasoner') updateConfig({ model: models[0] });
+          alert(`成功获取 ${models.length} 个模型！`);
       } else {
           alert('无法获取模型列表，请确认 CORS 配置或使用 Proxy');
       }
@@ -246,7 +237,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
              <span className="text-black font-bold text-xl">★</span>
            </div>
            <div>
-               <h2 className="text-2xl font-bold text-white tracking-tight">Agent Command Center</h2>
+               <h2 className="text-2xl font-bold text-white tracking-tight">Agent 指挥中心</h2>
                <p className="text-xs text-slate-400 font-mono">v2.4.0-stable</p>
            </div>
         </div>
@@ -254,7 +245,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
            onClick={handleSaveAndNext}
            className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-semibold shadow-lg shadow-emerald-500/20 transition-transform active:scale-95"
         >
-           DEPLOY PIPELINE &gt;
+           部署流水线 &gt;
         </button>
       </div>
 
@@ -263,8 +254,8 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
         <div className="w-48 flex flex-col gap-2 text-sm shrink-0">
           {[
             { id: 'basic', label: '基础设置', icon: '⚙️' },
-            { id: 'plugins', label: 'Agents & Plugins', icon: '🧩' },
-            { id: 'permissions', label: '工具与权限', icon: '🛡️' }
+            { id: 'plugins', label: '插件管理', icon: '🧩' },
+            { id: 'permissions', label: '权限设置', icon: '🛡️' }
           ].map(tab => (
               <button 
                 key={tab.id}
@@ -290,7 +281,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                {/* Name */}
                <div className="space-y-2">
                   <div className="flex justify-between items-center">
-                    <label className="text-slate-300 font-bold tracking-wide">AGENT IDENTITY</label>
+                    <label className="text-slate-300 font-bold tracking-wide">Agent 身份标识</label>
                     <span className="text-xs text-slate-500 font-mono">ID: {config.name.toLowerCase().replace(/\s/g, '-')}</span>
                   </div>
                   <input 
@@ -302,41 +293,41 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
 
                {/* API Provider Selection */}
                <div className="space-y-4">
-                  <label className="text-slate-300 font-bold tracking-wide block">LLM BACKEND</label>
+                  <label className="text-slate-300 font-bold tracking-wide block">大模型后端服务 (LLM Backend)</label>
                   <div className="grid grid-cols-2 gap-4">
                     <button 
                       onClick={() => updateConfig({ provider: 'google', model: 'gemini-2.5-flash' })}
                       className={`py-4 px-6 rounded-xl border-2 text-left transition-all ${config.provider === 'google' ? 'bg-indigo-900/20 border-indigo-500 text-indigo-300' : 'bg-[#181A1F] border-slate-700 text-slate-500 hover:border-slate-500'}`}
                     >
                       <div className="font-bold mb-1">Google Gemini</div>
-                      <div className="text-xs opacity-70">Native Support · Multimodal</div>
+                      <div className="text-xs opacity-70">原生支持 · 多模态</div>
                     </button>
                     <button 
                       onClick={() => updateConfig({ provider: 'custom', model: 'deepseek-reasoner' })}
                       className={`py-4 px-6 rounded-xl border-2 text-left transition-all ${config.provider === 'custom' ? 'bg-indigo-900/20 border-indigo-500 text-indigo-300' : 'bg-[#181A1F] border-slate-700 text-slate-500 hover:border-slate-500'}`}
                     >
-                      <div className="font-bold mb-1">Custom / OpenAI</div>
-                      <div className="text-xs opacity-70">DeepSeek · SiliconFlow · Local</div>
+                      <div className="font-bold mb-1">自定义 / OpenAI 兼容</div>
+                      <div className="text-xs opacity-70">DeepSeek · SiliconFlow · 本地模型</div>
                     </button>
                   </div>
 
                   {config.provider === 'google' ? (
                      <div className="animate-fade-in p-4 bg-[#181A1F] rounded-lg border border-slate-700">
-                        <label className="text-xs text-slate-500 mb-2 block uppercase tracking-wider">Model Selection</label>
+                        <label className="text-xs text-slate-500 mb-2 block uppercase tracking-wider">模型选择</label>
                         <select 
                           value={config.model}
                           onChange={(e) => updateConfig({ model: e.target.value })}
                           className="w-full bg-[#0B0C0F] border border-slate-600 rounded p-3 text-white focus:border-emerald-500 focus:outline-none appearance-none"
                         >
-                          <option value="gemini-2.5-flash">Gemini 2.5 Flash (Balanced)</option>
-                          <option value="gemini-3-pro-preview">Gemini 3.0 Pro (High Intelligence)</option>
+                          <option value="gemini-2.5-flash">Gemini 2.5 Flash (均衡)</option>
+                          <option value="gemini-3-pro-preview">Gemini 3.0 Pro (高智商)</option>
                         </select>
                      </div>
                   ) : (
                      <div className="space-y-4 animate-fade-in p-5 bg-[#181A1F] rounded-xl border border-slate-700">
                         {/* API Key */}
                         <div>
-                           <label className="text-xs font-bold text-slate-400 block mb-2">API KEY</label>
+                           <label className="text-xs font-bold text-slate-400 block mb-2">API 密钥 (API KEY)</label>
                            <div className="relative group">
                                 <input 
                                     type="password"
@@ -354,7 +345,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                                         'text-slate-400 bg-slate-800 hover:bg-slate-700'
                                     }`}
                                 >
-                                    {testStatus === 'testing' ? 'Connecting...' : testStatus === 'success' ? 'Connected' : 'Test'}
+                                    {testStatus === 'testing' ? '连接中...' : testStatus === 'success' ? '连接成功' : '测试'}
                                 </button>
                            </div>
                            {testStatus === 'error' && <p className="text-xs text-red-500 mt-2 font-mono">{testMessage}</p>}
@@ -362,7 +353,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
 
                         {/* API URL */}
                         <div>
-                           <label className="text-xs font-bold text-slate-400 block mb-2">BASE URL</label>
+                           <label className="text-xs font-bold text-slate-400 block mb-2">接口地址 (BASE URL)</label>
                            <input 
                               placeholder="https://api.deepseek.com" 
                               value={config.customBaseUrl || ''}
@@ -372,10 +363,10 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                            {config.customBaseUrl && (
                                <div className="mt-1 flex flex-col gap-1">
                                    <div className="text-[10px] text-slate-500 font-mono">
-                                       Preview: {getUrlPreview(config.customBaseUrl)}
+                                       预览: {getUrlPreview(config.customBaseUrl)}
                                    </div>
                                    <div className="text-[10px] text-amber-500/70">
-                                       Tip: If you encounter CORS errors locally, try using the proxy: <code>/proxy/deepseek</code> or <code>/proxy/silicon</code>
+                                       提示: 如果遇到 CORS 跨域错误，请尝试使用代理地址：<code>/proxy/deepseek</code> 或 <code>/proxy/silicon</code>
                                    </div>
                                </div>
                            )}
@@ -384,13 +375,13 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                         {/* Models */}
                         <div>
                            <div className="flex justify-between items-center mb-2">
-                               <label className="text-xs font-bold text-slate-400">MODEL ID</label>
+                               <label className="text-xs font-bold text-slate-400">模型 ID (MODEL ID)</label>
                                <button 
                                    onClick={handleFetchModels}
                                    disabled={fetchingModels}
-                                   className="text-[10px] text-emerald-500 hover:text-emerald-400 flex items-center gap-1"
+                                   className="text-[10px] text-emerald-500 hover:text-emerald-400 flex items-center gap-1 border border-emerald-500/30 px-2 py-0.5 rounded hover:bg-emerald-500/10 transition-colors"
                                >
-                                   {fetchingModels ? 'Fetching...' : 'Fetch List'}
+                                   {fetchingModels ? '获取中...' : '📥 拉取模型列表'}
                                </button>
                            </div>
                            <input 
@@ -399,6 +390,20 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                               placeholder="deepseek-reasoner"
                               className="w-full bg-[#0B0C0F] border border-slate-700 rounded-lg py-3 px-4 text-white focus:border-emerald-500 focus:outline-none font-mono text-sm"
                            />
+                           {fetchedModels.length > 0 && (
+                               <div className="mt-2 text-[10px] text-slate-500 flex flex-wrap gap-2">
+                                   <span>最近获取:</span>
+                                   {fetchedModels.slice(0, 3).map(m => (
+                                       <span 
+                                         key={m} 
+                                         onClick={() => updateConfig({ model: m })}
+                                         className="cursor-pointer text-indigo-400 hover:text-white underline"
+                                       >
+                                           {m}
+                                       </span>
+                                   ))}
+                               </div>
+                           )}
                         </div>
                      </div>
                   )}
@@ -406,7 +411,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
 
                {/* Work Directory */}
                <div className="space-y-2">
-                  <label className="text-slate-300 font-bold tracking-wide">WORKSPACE</label>
+                  <label className="text-slate-300 font-bold tracking-wide">工作区路径</label>
                   <input 
                     value={config.workDir}
                     onChange={(e) => updateConfig({ workDir: e.target.value })}
@@ -422,8 +427,8 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                 {/* Left: Plugin List */}
                 <div className="w-64 bg-[#0F1115] border-r border-slate-800 flex flex-col">
                     <div className="p-3 border-b border-slate-800 flex justify-between items-center">
-                        <span className="text-xs font-bold text-slate-400 uppercase">Explorer</span>
-                        <button onClick={handleCreatePlugin} className="text-slate-500 hover:text-white" title="New Agent">
+                        <span className="text-xs font-bold text-slate-400 uppercase">插件列表</span>
+                        <button onClick={handleCreatePlugin} className="text-slate-500 hover:text-white" title="新建 Agent">
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                         </button>
                     </div>
@@ -497,12 +502,12 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                                                 ))}
                                                 <button 
                                                     onClick={() => {
-                                                        const newTag = prompt('Enter new tag:');
+                                                        const newTag = prompt('输入新标签:');
                                                         if(newTag) handlePluginUpdate(activePlugin.id, { tags: [...activePlugin.tags, newTag] });
                                                     }}
                                                     className="px-2 py-0.5 rounded-full bg-slate-800/50 text-slate-600 text-xs border border-dashed border-slate-700 hover:text-white hover:border-slate-500"
                                                 >
-                                                    + tag
+                                                    + 标签
                                                 </button>
                                             </div>
                                         </div>
@@ -510,7 +515,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                                         {/* Toggle Switch */}
                                         <div className="flex items-center gap-2">
                                             <span className={`text-xs font-bold uppercase ${activePlugin.active ? 'text-emerald-500' : 'text-slate-600'}`}>
-                                                {activePlugin.active ? 'Active' : 'Disabled'}
+                                                {activePlugin.active ? '已启用' : '已禁用'}
                                             </span>
                                             <button 
                                                 onClick={() => handlePluginUpdate(activePlugin.id, { active: !activePlugin.active })}
@@ -523,18 +528,18 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
 
                                     {/* Description */}
                                     <div className="space-y-2">
-                                        <h4 className="text-sm font-bold text-slate-300">Description (中文注释)</h4>
+                                        <h4 className="text-sm font-bold text-slate-300">功能描述</h4>
                                         <textarea 
                                             value={activePlugin.description}
                                             onChange={(e) => handlePluginUpdate(activePlugin.id, { description: e.target.value })}
                                             className="w-full bg-[#181A1F] text-slate-300 text-sm p-4 rounded-lg border border-slate-700 focus:border-slate-500 focus:outline-none resize-none h-24 leading-relaxed"
-                                            placeholder="请用中文描述该 Agent 的用途..."
+                                            placeholder="请描述该 Agent 的用途..."
                                         />
                                     </div>
 
                                     {/* Tools */}
                                     <div className="space-y-2">
-                                        <h4 className="text-sm font-bold text-slate-300">Tools</h4>
+                                        <h4 className="text-sm font-bold text-slate-300">可用工具 (Tools)</h4>
                                         <div className="flex flex-wrap gap-2">
                                             {ALL_TOOLS.map(tool => {
                                                 const isActive = activePlugin.tools.includes(tool);
@@ -557,18 +562,18 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
 
                                     {/* Metadata Table */}
                                     <div className="space-y-2">
-                                        <h4 className="text-sm font-bold text-slate-300">Metadata</h4>
+                                        <h4 className="text-sm font-bold text-slate-300">元数据 (Metadata)</h4>
                                         <div className="bg-[#181A1F] rounded-lg border border-slate-700 p-4 font-mono text-xs space-y-2">
                                             <div className="flex justify-between border-b border-slate-700/50 pb-2">
-                                                <span className="text-slate-500">File:</span>
+                                                <span className="text-slate-500">文件名:</span>
                                                 <span className="text-slate-300">{activePlugin.fileName}</span>
                                             </div>
                                             <div className="flex justify-between border-b border-slate-700/50 pb-2">
-                                                <span className="text-slate-500">Size:</span>
+                                                <span className="text-slate-500">大小:</span>
                                                 <span className="text-slate-300">{(activePlugin.content.length / 1024).toFixed(2)} KB</span>
                                             </div>
                                             <div className="flex justify-between">
-                                                <span className="text-slate-500">Source:</span>
+                                                <span className="text-slate-500">来源路径:</span>
                                                 <span className="text-slate-300 truncate max-w-[300px]">{activePlugin.sourcePath}</span>
                                             </div>
                                         </div>
@@ -576,7 +581,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
 
                                     {/* Content Editor */}
                                     <div className="space-y-2 flex-1 flex flex-col">
-                                        <h4 className="text-sm font-bold text-slate-300">Content (English System Prompt)</h4>
+                                        <h4 className="text-sm font-bold text-slate-300">系统提示词 (System Prompt)</h4>
                                         <div className="relative group flex-1">
                                             <div className="absolute top-0 left-0 w-full h-6 bg-[#1e1e1e] border border-slate-700 border-b-0 rounded-t-lg flex items-center px-2 gap-2">
                                                 <div className="w-2 h-2 rounded-full bg-red-500"></div>
@@ -588,7 +593,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                                                 onChange={(e) => handlePluginUpdate(activePlugin.id, { content: e.target.value })}
                                                 className="w-full min-h-[300px] bg-[#0F1115] text-slate-300 font-mono text-sm p-4 pt-8 rounded-lg border border-slate-700 focus:border-blue-500 focus:outline-none resize-y leading-relaxed custom-scrollbar"
                                                 spellCheck={false}
-                                                placeholder="Use English for better LLM performance..."
+                                                placeholder="在此输入中文或英文 Prompt..."
                                             />
                                         </div>
                                     </div>
@@ -598,7 +603,7 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
                     ) : (
                         <div className="flex flex-col items-center justify-center h-full text-slate-600">
                             <span className="text-4xl mb-4 opacity-50">⚡</span>
-                            <p>Select an agent to configure</p>
+                            <p>请选择一个 Agent 进行配置</p>
                         </div>
                     )}
                 </div>
@@ -610,15 +615,15 @@ const StepConfiguration: React.FC<Props> = ({ project, setProject, onNext }) => 
             <div className="flex-1 p-8 space-y-6 overflow-y-auto custom-scrollbar min-h-0">
                 <div className="border border-emerald-500/50 bg-emerald-900/10 rounded-xl p-6">
                    <h3 className="font-bold text-white mb-2 flex justify-between items-center">
-                     Auto-Approve File Operations <span className="bg-emerald-900 text-emerald-400 text-xs px-2 py-1 rounded border border-emerald-700">SELECTED</span>
+                     自动批准文件操作 <span className="bg-emerald-900 text-emerald-400 text-xs px-2 py-1 rounded border border-emerald-700">已选中</span>
                    </h3>
-                   <p className="text-sm text-slate-400 mb-4">File edits and system operations by trusted agents will be executed automatically.</p>
+                   <p className="text-sm text-slate-400 mb-4">受信任的 Agent 进行的文件编辑和系统操作将自动执行，无需人工确认。</p>
                 </div>
                 <div className="bg-amber-900/20 border border-amber-700/50 p-6 rounded-xl flex gap-4 items-start">
                     <span className="text-amber-500 text-2xl font-bold">!</span>
                     <div>
-                        <h4 className="font-bold text-amber-500 text-sm">Security Warning</h4>
-                        <p className="text-xs text-amber-400/70 mt-1">Only enable 'Write' tool for agents you trust. Sandbox mode is currently disabled in local preview.</p>
+                        <h4 className="font-bold text-amber-500 text-sm">安全警告</h4>
+                        <p className="text-xs text-amber-400/70 mt-1">请仅为您信任的 Agent 启用“Write（写入）”工具。当前本地预览模式下，沙盒模式已禁用。</p>
                     </div>
                 </div>
             </div>
