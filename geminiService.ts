@@ -1,4 +1,4 @@
-import { GoogleGenAI, Schema, Type } from "@google/genai";
+import { GoogleGenAI, Schema, Type, Tool } from "@google/genai";
 import { ProjectState, Character, Chapter, AgentConfig } from './types';
 
 // Helper to safely get API Key from process.env if available, or return empty string
@@ -313,6 +313,38 @@ const getSystemInstruction = (config?: AgentConfig) => {
   return base;
 };
 
+// --- Helper: Get Gemini Tools based on active plugins ---
+const getGeminiTools = (config: AgentConfig): Tool[] | undefined => {
+    // Only Google Provider supports the `tools` object directly in this way for now.
+    // Custom providers would need OpenA-compatible tool definitions, which is out of scope for this simple helper.
+    if (config.provider !== 'google') return undefined;
+
+    const activePlugins = config.plugins.filter(p => p.active);
+    const tools: Tool[] = [];
+
+    // Check for WebSearch capability
+    const hasWebSearch = activePlugins.some(p => p.tools.includes('WebSearch'));
+    if (hasWebSearch) {
+        tools.push({ googleSearch: {} });
+    }
+
+    return tools.length > 0 ? tools : undefined;
+};
+
+// --- Helper: Format Grounding Metadata ---
+const formatGroundingMetadata = (response: any): string => {
+    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    if (!chunks || chunks.length === 0) return '';
+
+    let sources = '\n\n**🔍 引用来源 (Google Search Grounding):**\n';
+    chunks.forEach((chunk: any, index: number) => {
+        if (chunk.web?.uri) {
+            sources += `- [${chunk.web.title || 'Source'}](${chunk.web.uri})\n`;
+        }
+    });
+    return sources;
+};
+
 // --- Helper: Custom OpenAI-Compatible API Caller ---
 const callCustomApi = async (config: AgentConfig, prompt: string, systemPrompt: string, jsonMode: boolean = false): Promise<string> => {
     let baseUrl = normalizeBaseUrl(config.customBaseUrl || 'https://api.deepseek.com');
@@ -411,6 +443,8 @@ export const runMephistoCritique = async (
 // --- Step 1: Generate Settings ---
 export const generateSettings = async (idea: string, config: AgentConfig): Promise<string> => {
   const systemPrompt = getSystemInstruction(config);
+  const tools = getGeminiTools(config);
+  
   const prompt = `
   任务：生成小说核心设定及大纲
   用户灵感：${idea}
@@ -421,6 +455,8 @@ export const generateSettings = async (idea: string, config: AgentConfig): Promi
   2. 人物形象鲜明。
   3. 设定要有新意，避免套路和抄袭。
   4. 输出格式为Markdown，包含：【核心概念】、【世界观】、【力量体系/职业体系】、【主要冲突】、【大致故事走向】。
+  
+  (如果启用了搜索工具，请利用搜索结果验证设定的合理性或补充背景资料)
   `;
 
   if (config.provider === 'custom') {
@@ -429,12 +465,19 @@ export const generateSettings = async (idea: string, config: AgentConfig): Promi
 
   const ai = getAI();
   const modelName = config.model.includes('flash') ? 'gemini-2.5-flash' : 'gemini-3-pro-preview';
+  
   const response = await ai.models.generateContent({
     model: modelName,
     contents: prompt,
-    config: { systemInstruction: systemPrompt }
+    config: { 
+        systemInstruction: systemPrompt,
+        tools: tools 
+    }
   });
-  return response.text || "";
+
+  const text = response.text || "";
+  const grounding = formatGroundingMetadata(response);
+  return text + grounding;
 };
 
 // --- Step 2 & 3: Critique Settings (Using Mephisto) ---
@@ -446,6 +489,8 @@ export const critiqueSettings = async (settings: string, config: AgentConfig): P
 // --- Step 4: Generate Characters ---
 export const generateCharacters = async (settings: string, config: AgentConfig): Promise<Character[]> => {
   const systemPrompt = getSystemInstruction(config);
+  const tools = getGeminiTools(config);
+
   const prompt = `
   任务：设置小说中的主要角色和次要角色
   背景设定：${settings}
@@ -476,6 +521,7 @@ export const generateCharacters = async (settings: string, config: AgentConfig):
     config: {
       systemInstruction: systemPrompt,
       responseMimeType: "application/json",
+      tools: tools, // Pass tools if enabled (though strictly JSON schema might conflict with search in some models, usually fine)
       responseSchema: {
         type: Type.ARRAY,
         items: {
@@ -499,6 +545,7 @@ export const generateCharacters = async (settings: string, config: AgentConfig):
 // --- Step 5 & 6: Generate Chapter Outline ---
 export const generateOutline = async (settings: string, characters: Character[], config: AgentConfig): Promise<Chapter[]> => {
   const systemPrompt = getSystemInstruction(config);
+  const tools = getGeminiTools(config);
   const charContext = characters.map(c => `${c.name} (${c.role}): ${c.description}`).join('\n');
   
   const prompt = `
@@ -531,6 +578,7 @@ export const generateOutline = async (settings: string, characters: Character[],
     contents: prompt,
     config: {
       systemInstruction: systemPrompt,
+      tools: tools,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.ARRAY,
@@ -560,6 +608,7 @@ export const writeChapterContent = async (
   config: AgentConfig
 ): Promise<string> => {
   const systemPrompt = getSystemInstruction(config);
+  const tools = getGeminiTools(config);
   const charContext = characters.map(c => `${c.name}: ${c.description}`).join('\n');
   
   const prompt = `
@@ -574,6 +623,8 @@ export const writeChapterContent = async (
   1. 写出引人入胜的内容，约2300字。
   2. 风格符合设定。
   3. 引入主要冲突，不要偏离主线。
+  
+  (如果启用了 Trend Watcher Agent，请利用搜索工具确保细节的真实性或查找相关描写素材)
   `;
 
   if (config.provider === 'custom') {
@@ -586,9 +637,15 @@ export const writeChapterContent = async (
   const response = await ai.models.generateContent({
     model: modelName,
     contents: prompt,
-    config: { systemInstruction: systemPrompt }
+    config: { 
+        systemInstruction: systemPrompt,
+        tools: tools
+    }
   });
-  return response.text || "";
+
+  const text = response.text || "";
+  const grounding = formatGroundingMetadata(response);
+  return text + grounding;
 };
 
 // --- Step 8: Critique Draft (Using Mephisto) ---

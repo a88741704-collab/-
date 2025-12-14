@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { ProjectState, AgentConfig, AgentPlugin, RAGConfig } from '../types';
 import { testApiConnection, fetchAvailableModels } from '../geminiService';
@@ -12,17 +11,17 @@ interface Props {
 // Initial Data consistent with the new UI style
 const AVAILABLE_PLUGINS: AgentPlugin[] = [
   { 
-      id: 'ethics', 
-      name: 'ai-ethics-advisor', 
+      id: 'architect',
+      name: 'story-architect',
       type: 'agent',
-      tags: ['ai-specialists', 'safety'],
-      description: 'AI ethics and responsible AI development specialist. Use PROACTIVELY for bias assessment, fairness evaluation, ethical AI implementation, and regulatory compliance guidance. Expert in AI safety and alignment.', 
-      tools: ['Read', 'Write', 'WebSearch', 'Grep'],
-      active: false, 
-      content: 'You are an AI Ethics Advisor. Your mandate is to ensure all generated content adheres to safety guidelines, avoids stereotypes, and promotes inclusivity. Review all plot points for potential sensitivity.',
-      fileName: 'ai-ethics-advisor.md',
-      sourcePath: 'agents/ai-specialists/ai-ethics-advisor.md',
-      fileSize: '6.86 KB'
+      tags: ['structure', 'world-building'],
+      description: 'Master architect for narrative structures. Converts vague ideas into solid plot beats, world rules, and character arcs.',
+      tools: ['Read', 'Write'],
+      active: true,
+      content: 'You are the Story Architect. Your goal is to turn the user\'s raw inspiration into a cohesive novel structure. Focus on Causality, Conflict, and Theme. When generating settings or outlines, ensure every element serves the core narrative.',
+      fileName: 'story-architect.md',
+      sourcePath: 'agents/specialists/story-architect.md',
+      fileSize: '5.5 KB'
   },
   { 
       id: 'critic', 
@@ -36,6 +35,32 @@ const AVAILABLE_PLUGINS: AgentPlugin[] = [
       fileName: 'literary-critic.md',
       sourcePath: 'agents/critics/literary-critic.md',
       fileSize: '4.2 KB'
+  },
+  { 
+      id: 'researcher', 
+      name: 'trend-watcher', 
+      type: 'agent', 
+      tags: ['research', 'web'], 
+      description: 'Research assistant capable of searching the web for real-world facts, historical details, or current tropes.', 
+      tools: ['WebSearch'], 
+      active: false, 
+      content: 'You are a Research Assistant. Use Google Search to verify facts, find historical references, or look up scientific concepts to make the novel more realistic.', 
+      fileName: 'trend-watcher.md', 
+      sourcePath: 'agents/support/trend-watcher.md', 
+      fileSize: '2.8 KB' 
+  },
+  { 
+      id: 'ethics', 
+      name: 'ai-ethics-advisor', 
+      type: 'agent',
+      tags: ['ai-specialists', 'safety'],
+      description: 'AI ethics and responsible AI development specialist. Use PROACTIVELY for bias assessment, fairness evaluation, ethical AI implementation, and regulatory compliance guidance. Expert in AI safety and alignment.', 
+      tools: ['Read', 'Write', 'WebSearch', 'Grep'],
+      active: false, 
+      content: 'You are an AI Ethics Advisor. Your mandate is to ensure all generated content adheres to safety guidelines, avoids stereotypes, and promotes inclusivity. Review all plot points for potential sensitivity.',
+      fileName: 'ai-ethics-advisor.md',
+      sourcePath: 'agents/ai-specialists/ai-ethics-advisor.md',
+      fileSize: '6.86 KB'
   },
   { 
       id: 'visual', 
