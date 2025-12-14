@@ -36,6 +36,12 @@ export interface RAGConfig {
   useSeparateApi: boolean;
   ragBaseUrl?: string;
   ragApiKey?: string;
+
+  // Vector Store Configuration
+  vectorStore: 'local' | 'chroma' | 'qdrant';
+  vectorStoreUrl?: string;
+  vectorStoreApiKey?: string;
+  vectorStoreCollection?: string;
 }
 
 export interface AgentConfig {

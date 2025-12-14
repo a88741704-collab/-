@@ -29,7 +29,9 @@ const INITIAL_PROJECT: ProjectState = {
         chunkSize: 512,
         chunkOverlap: 64,
         scoreThreshold: 0.7,
-        useSeparateApi: false
+        useSeparateApi: false,
+        vectorStore: 'local',
+        vectorStoreCollection: 'novel_knowledge_base'
     }
   },
   agentStatus: 'idle',
@@ -120,7 +122,9 @@ export default function App() {
     }
   };
 
-  const showWelcomeBlocker = !hasKey && currentStep !== PipelineStep.Configuration;
+  // Logic Update: Only show blocker if NO Google Key AND (Provider is Google OR Custom Key is missing)
+  const isCustomConfigured = project.agentConfig.provider === 'custom' && !!project.agentConfig.customApiKey;
+  const showWelcomeBlocker = !hasKey && !isCustomConfigured && currentStep !== PipelineStep.Configuration;
 
   if (showWelcomeBlocker) {
     return (
@@ -165,7 +169,7 @@ export default function App() {
            </div>
            {project.agentConfig.ragConfig.enabled && (
                <div className="px-3 py-1 bg-emerald-900/30 text-emerald-400 rounded-full border border-emerald-800/50 flex items-center gap-1">
-                   <span>📚 RAG Active</span>
+                   <span>📚 RAG: {project.agentConfig.ragConfig.vectorStore}</span>
                </div>
            )}
         </div>

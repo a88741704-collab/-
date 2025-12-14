@@ -55,10 +55,10 @@ const RagSettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
         </div>
 
         {/* Body */}
-        <div className="p-6 overflow-y-auto space-y-6 text-sm">
+        <div className="p-6 overflow-y-auto space-y-6 text-sm custom-scrollbar">
           {/* Name */}
           <div className="space-y-2">
-            <label className="text-slate-300 font-semibold">名称</label>
+            <label className="text-slate-300 font-semibold">知识库名称</label>
             <input 
               value={localConfig.name}
               onChange={(e) => handleChange({ name: e.target.value })}
@@ -66,51 +66,100 @@ const RagSettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
             />
           </div>
 
-          {/* Embedding Model */}
-          <div className="space-y-2">
-             <div className="flex justify-between">
-                <label className="text-slate-300 font-semibold flex items-center gap-1">
-                   嵌入模型 <span className="text-slate-500 text-xs">(i)</span>
-                </label>
-             </div>
-             <div className="relative">
-                <select 
-                    value={localConfig.embeddingModel}
-                    onChange={(e) => handleChange({ embeddingModel: e.target.value })}
-                    className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white focus:border-emerald-500 focus:outline-none appearance-none"
-                >
-                    <option value="BAAI/bge-large-zh-v1.5">BAAI/bge-large-zh-v1.5 | 硅基流动</option>
-                    <option value="BAAI/bge-m3">BAAI/bge-m3 | 硅基流动</option>
-                    <option value="text-embedding-004">text-embedding-004 | Google</option>
-                    <option value="custom">Custom (Use API config below)</option>
-                </select>
-                <div className="absolute right-3 top-3 pointer-events-none text-slate-500">▼</div>
-             </div>
+          {/* Vector Store Configuration */}
+          <div className="p-4 bg-slate-800/30 border border-slate-700/50 rounded-xl space-y-4">
+              <h4 className="text-white font-bold flex items-center gap-2">
+                  🗄️ 向量数据库 (Vector Store)
+              </h4>
+              <div className="space-y-2">
+                  <label className="text-slate-300 text-xs uppercase tracking-wide">存储类型</label>
+                  <select 
+                      value={localConfig.vectorStore}
+                      onChange={(e) => handleChange({ vectorStore: e.target.value as any })}
+                      className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-emerald-500 focus:outline-none"
+                  >
+                      <option value="local">本地存储 (IndexedDB/Memory) - 推荐个人使用</option>
+                      <option value="chroma">ChromaDB (Remote/Local Server)</option>
+                      <option value="qdrant">Qdrant Cloud / Docker</option>
+                  </select>
+              </div>
+
+              {localConfig.vectorStore !== 'local' && (
+                  <div className="grid grid-cols-1 gap-4 animate-fade-in">
+                      <div className="space-y-2">
+                          <label className="text-slate-300 text-xs uppercase tracking-wide">数据库地址 (URL)</label>
+                          <input 
+                             placeholder={localConfig.vectorStore === 'chroma' ? "http://localhost:8000" : "https://xyz-example.qdrant.tech"}
+                             value={localConfig.vectorStoreUrl || ''}
+                             onChange={(e) => handleChange({ vectorStoreUrl: e.target.value })}
+                             className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white font-mono text-xs"
+                          />
+                      </div>
+                      <div className="space-y-2">
+                          <label className="text-slate-300 text-xs uppercase tracking-wide">API Key (Optional)</label>
+                          <input 
+                             type="password"
+                             value={localConfig.vectorStoreApiKey || ''}
+                             onChange={(e) => handleChange({ vectorStoreApiKey: e.target.value })}
+                             className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white font-mono text-xs"
+                          />
+                      </div>
+                      <div className="space-y-2">
+                          <label className="text-slate-300 text-xs uppercase tracking-wide">集合名称 (Collection)</label>
+                          <input 
+                             value={localConfig.vectorStoreCollection || ''}
+                             onChange={(e) => handleChange({ vectorStoreCollection: e.target.value })}
+                             placeholder="novel_knowledge_base"
+                             className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white font-mono text-xs"
+                          />
+                      </div>
+                  </div>
+              )}
           </div>
 
-          {/* Embedding Dimension */}
-          <div className="space-y-2">
-            <label className="text-slate-300 font-semibold flex items-center gap-1">
-               嵌入维度 <span className="text-slate-500 text-xs">(i)</span>
-            </label>
-            <div className="flex items-center gap-2">
-               <input 
-                 type="number"
-                 value={localConfig.embeddingDimension}
-                 onChange={(e) => handleChange({ embeddingDimension: Number(e.target.value) })}
-                 className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white focus:border-emerald-500 focus:outline-none"
-               />
-               <button className="p-3 bg-slate-800 border border-slate-600 rounded-lg text-slate-400 hover:text-white">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-               </button>
-            </div>
+          <div className="grid grid-cols-2 gap-4">
+              {/* Embedding Model */}
+              <div className="space-y-2">
+                 <div className="flex justify-between">
+                    <label className="text-slate-300 font-semibold flex items-center gap-1">
+                       嵌入模型
+                    </label>
+                 </div>
+                 <div className="relative">
+                    <select 
+                        value={localConfig.embeddingModel}
+                        onChange={(e) => handleChange({ embeddingModel: e.target.value })}
+                        className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white focus:border-emerald-500 focus:outline-none appearance-none text-xs"
+                    >
+                        <option value="BAAI/bge-large-zh-v1.5">BAAI/bge-large-zh-v1.5</option>
+                        <option value="BAAI/bge-m3">BAAI/bge-m3</option>
+                        <option value="text-embedding-004">text-embedding-004 (Google)</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                 </div>
+              </div>
+
+              {/* Embedding Dimension */}
+              <div className="space-y-2">
+                <label className="text-slate-300 font-semibold flex items-center gap-1">
+                   嵌入维度
+                </label>
+                <div className="flex items-center gap-2">
+                   <input 
+                     type="number"
+                     value={localConfig.embeddingDimension}
+                     onChange={(e) => handleChange({ embeddingDimension: Number(e.target.value) })}
+                     className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white focus:border-emerald-500 focus:outline-none text-xs"
+                   />
+                </div>
+              </div>
           </div>
 
           {/* Top K Slider */}
           <div className="space-y-4">
              <div className="flex justify-between items-center">
                  <label className="text-slate-300 font-semibold flex items-center gap-1">
-                    请求文档片段数量 (Top K) <span className="text-slate-500 text-xs">(i)</span>
+                    检索数量 (Top K)
                  </label>
                  <span className="text-emerald-500 font-mono">{localConfig.topK}</span>
              </div>
@@ -121,12 +170,6 @@ const RagSettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
                 onChange={(e) => handleChange({ topK: Number(e.target.value) })}
                 className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
              />
-             <div className="flex justify-between text-xs text-slate-500">
-                <span>1</span>
-                <span>默认</span>
-                <span>30</span>
-                <span>50</span>
-             </div>
           </div>
 
           {/* Advanced Settings Toggle */}
@@ -136,7 +179,7 @@ const RagSettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
                 className="flex items-center gap-2 text-slate-300 hover:text-white font-semibold transition-colors"
              >
                 <span className={`transform transition-transform ${showAdvanced ? 'rotate-90' : ''}`}>›</span>
-                高级设置
+                高级 / API 设置
              </button>
 
              {showAdvanced && (
@@ -145,57 +188,53 @@ const RagSettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
                    {/* Rerank Model */}
                    <div className="space-y-2">
                         <label className="text-slate-300 font-semibold flex items-center gap-1">
-                            重排模型 (Rerank) <span className="text-slate-500 text-xs">(i)</span>
+                            重排模型 (Rerank)
                         </label>
                         <select 
                             value={localConfig.rerankModel || ''}
                             onChange={(e) => handleChange({ rerankModel: e.target.value })}
-                            className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white focus:border-emerald-500 focus:outline-none"
+                            className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white focus:border-emerald-500 focus:outline-none text-xs"
                         >
                             <option value="">Disabled (None)</option>
-                            <option value="BAAI/bge-reranker-v2-m3">BAAI/bge-reranker-v2-m3 | 硅基流动</option>
-                            <option value="BAAI/bge-reranker-large">BAAI/bge-reranker-large | 硅基流动</option>
+                            <option value="BAAI/bge-reranker-v2-m3">BAAI/bge-reranker-v2-m3</option>
+                            <option value="BAAI/bge-reranker-large">BAAI/bge-reranker-large</option>
                         </select>
                    </div>
 
                    {/* Chunking */}
                    <div className="grid grid-cols-2 gap-4">
                        <div className="space-y-2">
-                          <label className="text-slate-300 font-semibold">分段大小 (Chunk Size)</label>
+                          <label className="text-slate-300 font-semibold">分段 (Chunk Size)</label>
                           <input 
                             type="number" 
-                            placeholder="默认 (512)"
+                            placeholder="512"
                             value={localConfig.chunkSize || ''}
                             onChange={(e) => handleChange({ chunkSize: Number(e.target.value) })}
-                            className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white"
+                            className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white text-xs"
                           />
                        </div>
                        <div className="space-y-2">
-                          <label className="text-slate-300 font-semibold">重叠大小 (Overlap)</label>
+                          <label className="text-slate-300 font-semibold">重叠 (Overlap)</label>
                           <input 
                             type="number" 
-                            placeholder="默认 (64)"
+                            placeholder="64"
                             value={localConfig.chunkOverlap || ''}
                             onChange={(e) => handleChange({ chunkOverlap: Number(e.target.value) })}
-                            className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white"
+                            className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white text-xs"
                           />
                        </div>
                    </div>
 
                    {/* Score Threshold */}
                    <div className="space-y-2">
-                      <label className="text-slate-300 font-semibold">匹配度阈值 (Threshold)</label>
+                      <label className="text-slate-300 font-semibold">匹配阈值 (Threshold)</label>
                       <input 
                          type="number" 
                          step="0.1" min="0" max="1"
                          value={localConfig.scoreThreshold || 0.7}
                          onChange={(e) => handleChange({ scoreThreshold: Number(e.target.value) })}
-                         className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white"
+                         className="w-full bg-slate-800/50 border border-slate-600 rounded-lg p-3 text-white text-xs"
                       />
-                   </div>
-
-                   <div className="p-3 bg-amber-900/20 border border-amber-700/50 rounded-lg text-amber-500 text-xs flex items-center gap-2">
-                      <span>⚠️</span> 分段大小和重叠大小修改只对新添加的内容有效
                    </div>
                    
                    {/* Separate API Config */}
@@ -209,7 +248,7 @@ const RagSettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
                                 className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500"
                             />
                             <label htmlFor="separateApi" className="text-slate-300 font-semibold cursor-pointer">
-                                为嵌入/重排模型使用独立 API Key
+                                为嵌入/重排使用独立 API (如 SiliconFlow)
                             </label>
                         </div>
                         
