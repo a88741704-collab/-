@@ -9,10 +9,10 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "app": "electron .",
-    "app:dev": "concurrently \"vite\" \"wait-on tcp:5173 && electron .\""
+    "app:dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\""
   },
   "dependencies": {
-    "@google/genai": "^0.1.0",
+    "@google/genai": "*",
     "idb-keyval": "^6.2.1",
     "mammoth": "^1.8.0",
     "react": "^18.3.1",
