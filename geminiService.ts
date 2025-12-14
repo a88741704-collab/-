@@ -3,13 +3,10 @@ import { ProjectState, Character, Chapter, AgentConfig } from './types';
 
 // Helper to safely get API Key from process.env OR import.meta.env (Vite)
 const getEnvApiKey = () => {
-    // Priority: 1. Process Env (if defined via bundler define), 2. Vite Env, 3. Empty
     if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
         return process.env.API_KEY;
     }
-    // @ts-ignore
     if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
-        // @ts-ignore
         return import.meta.env.VITE_API_KEY;
     }
     return '';

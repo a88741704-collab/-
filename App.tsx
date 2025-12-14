@@ -84,7 +84,6 @@ const PIPELINE_STEPS = [
 export default function App() {
   const [currentStep, setCurrentStep] = useState<PipelineStep>(PipelineStep.Configuration);
   const [project, setProject] = useState<ProjectState>(INITIAL_PROJECT);
-  const [hasKey, setHasKey] = useState(false);
   
   // Persistence States
   const [isLoaded, setIsLoaded] = useState(false);
@@ -120,14 +119,6 @@ export default function App() {
       }
     };
     loadData();
-
-    const checkKey = async () => {
-      if (window.aistudio && window.aistudio.hasSelectedApiKey) {
-        const selected = await window.aistudio.hasSelectedApiKey();
-        setHasKey(selected);
-      }
-    };
-    checkKey();
   }, []);
 
   // 2. Auto-Save Data on Change (Debounced)
@@ -142,16 +133,6 @@ export default function App() {
 
     return () => clearTimeout(timer);
   }, [project, isLoaded]);
-
-  const handleSelectKey = async () => {
-    if (window.aistudio && window.aistudio.openSelectKey) {
-      await window.aistudio.openSelectKey();
-      const selected = await window.aistudio.hasSelectedApiKey();
-      setHasKey(selected);
-    } else {
-      alert("API Key selection not available in this environment.");
-    }
-  };
 
   const renderStep = () => {
     switch (currentStep) {
@@ -176,8 +157,12 @@ export default function App() {
     }
   };
 
-  const isCustomConfigured = project.agentConfig.provider === 'custom' && !!project.agentConfig.customApiKey;
-  const showWelcomeBlocker = isLoaded && !hasKey && !isCustomConfigured && currentStep !== PipelineStep.Configuration;
+  // Check if we have a valid configuration to proceed
+  const hasValidConfig = 
+      (project.agentConfig.provider === 'custom' && !!project.agentConfig.customApiKey) || 
+      (project.agentConfig.provider === 'google' && (!!process.env.API_KEY || !!import.meta.env.VITE_API_KEY));
+
+  const showWelcomeBlocker = isLoaded && !hasValidConfig && currentStep !== PipelineStep.Configuration;
 
   if (!isLoaded) {
       return (
@@ -196,19 +181,13 @@ export default function App() {
         <div className="max-w-md text-center p-8 bg-slate-800 rounded-2xl shadow-2xl border border-slate-700">
           <div className="w-16 h-16 bg-indigo-600 rounded-xl flex items-center justify-center font-bold text-2xl text-white shadow-lg mx-auto mb-6">N</div>
           <h1 className="text-2xl font-bold mb-4">欢迎使用 NovelCraft AI</h1>
-          <p className="text-slate-400 mb-8">您需要选择 Google API Key，或者进入配置页面设置自定义 API。</p>
+          <p className="text-slate-400 mb-8">请先配置您的 AI 模型服务商 (Google Gemini 或 DeepSeek/OpenAI)。</p>
           <div className="space-y-3">
             <button 
-              onClick={handleSelectKey}
+              onClick={() => setCurrentStep(PipelineStep.Configuration)}
               className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg transition-all shadow-lg shadow-indigo-500/30"
             >
-              选择 Google API Key
-            </button>
-            <button 
-              onClick={() => setCurrentStep(PipelineStep.Configuration)}
-              className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg transition-all"
-            >
-              使用自定义 API 配置
+              前往配置页面
             </button>
           </div>
         </div>
@@ -220,12 +199,9 @@ export default function App() {
   const activeKbsCount = project.agentConfig.ragConfigs?.filter(r => r.enabled).length || 0;
 
   return (
-    // REFACTOR: Use h-screen w-screen and flex-col for the root container.
-    // This removes the dependency on fixed positioning and padding calculations,
-    // ensuring the main content area (flex-1) always calculates scroll height correctly.
     <div className="h-screen w-screen flex flex-col bg-[#0f172a] text-slate-200 overflow-hidden">
       
-      {/* Header is now a flex item, not fixed */}
+      {/* Header */}
       <header className="h-16 shrink-0 border-b border-slate-800 bg-[#0f172a]/80 backdrop-blur flex items-center px-6 justify-between shadow-sm z-50">
         <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/30">N</div>

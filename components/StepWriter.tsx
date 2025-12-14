@@ -78,13 +78,10 @@ const StepWriter: React.FC<Props> = ({ project, setProject }) => {
   };
 
   const handleVideo = async () => {
-      if (!window.aistudio?.hasSelectedApiKey) {
-           // Simulate check
-      }
       setGeneratingVideo(true);
       setProject({ ...project, agentStatus: 'generating', agentTask: '正在渲染场景动画 (Veo)...' });
       try {
-          const videoUrl = await generateSceneVideo(activeChapter.summary);
+          const videoUrl = await generateSceneVideo(activeChapter!.summary);
           if (videoUrl) {
               updateChapter({ animationUrl: videoUrl });
               setProject({ ...project, agentStatus: 'idle', agentTask: '动画渲染完成' });
