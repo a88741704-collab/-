@@ -224,7 +224,7 @@ export default function App() {
 
   const hasValidConfig = 
       (project.agentConfig.provider === 'custom' && !!project.agentConfig.customApiKey) || 
-      (project.agentConfig.provider === 'google' && (!!process.env.API_KEY || !!import.meta.env.VITE_API_KEY));
+      (project.agentConfig.provider === 'google' && (!!process.env.API_KEY || !!(import.meta as any).env?.VITE_API_KEY));
 
   const showWelcomeBlocker = isLoaded && !hasValidConfig && currentStep !== PipelineStep.Configuration;
 
