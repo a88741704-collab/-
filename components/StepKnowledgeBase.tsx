@@ -32,7 +32,6 @@ const readFileAsText = (file: File): Promise<string> => {
 };
 
 // Recursive Character Text Splitter Simulation
-// Splits by double newline, then newline, then space to respect chunk size
 const recursiveSplitText = (text: string, chunkSize: number, chunkOverlap: number): TextChunk[] => {
     const chunks: TextChunk[] = [];
     if (!text) return chunks;
@@ -41,28 +40,20 @@ const recursiveSplitText = (text: string, chunkSize: number, chunkOverlap: numbe
     while (startIndex < text.length) {
         let endIndex = startIndex + chunkSize;
         
-        // If we are not at the end, try to find a nice break point
         if (endIndex < text.length) {
-            // Priority 1: Double newline (Paragraph)
             const doubleNewlineIndex = text.lastIndexOf('\n\n', endIndex);
-            // Priority 2: Newline
             const newlineIndex = text.lastIndexOf('\n', endIndex);
-            // Priority 3: Space
             const spaceIndex = text.lastIndexOf(' ', endIndex);
 
-            // Determine best break point, ensuring we progress at least a bit to avoid infinite loops
-            // Only back up if the break point is reasonably close to the limit (e.g. within last 25%)
-            // otherwise we might cut too short.
             const minProgress = Math.floor(chunkSize * 0.5);
             
             if (doubleNewlineIndex > startIndex + minProgress) {
-                endIndex = doubleNewlineIndex + 2; // Include the newlines
+                endIndex = doubleNewlineIndex + 2; 
             } else if (newlineIndex > startIndex + minProgress) {
                 endIndex = newlineIndex + 1;
             } else if (spaceIndex > startIndex + minProgress) {
                 endIndex = spaceIndex + 1;
             }
-            // Fallback: Hard cut at chunk size
         } else {
             endIndex = text.length;
         }
@@ -75,12 +66,8 @@ const recursiveSplitText = (text: string, chunkSize: number, chunkOverlap: numbe
             endIndex: endIndex
         });
 
-        // Move start index for next chunk, backing up by overlap
-        // But never back up past current start (infinite loop protection)
         const nextStart = endIndex - chunkOverlap;
         startIndex = Math.max(startIndex + 1, nextStart);
-        
-        // Optimization: If we reached end, break
         if (endIndex >= text.length) break;
     }
 
@@ -114,7 +101,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
   // Search Settings State
   const [recallMethod, setRecallMethod] = useState<'hybrid' | 'vector' | 'keyword'>('hybrid');
   const [vectorRatio, setVectorRatio] = useState(0.8);
-  const [topK, setTopK] = useState(activeKb?.topK || 20); // Retrieve more candidates, display paginated
+  const [topK, setTopK] = useState(activeKb?.topK || 20); 
   const [minScore, setMinScore] = useState(0.5);
   const [enableRerank, setEnableRerank] = useState(false);
 
@@ -132,7 +119,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
       const newKb: RAGConfig = {
           id: newId,
           enabled: true,
-          name: 'New Knowledge Base',
+          name: '新建知识库',
           embeddingModel: 'BAAI/bge-large-zh-v1.5',
           embeddingDimension: 1024,
           topK: 20,
@@ -165,7 +152,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
 
   const handleDeleteKb = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm('Confirm delete this knowledge base?')) {
+    if (confirm('确定要删除这个知识库吗？')) {
         setProject(prev => ({
             ...prev,
             agentConfig: {
@@ -216,10 +203,10 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           knowledgeBaseFiles: [...(prev.knowledgeBaseFiles || []), newFile]
       }));
 
-      // Simulate Embedding Progress (We already have chunks, but simulating vectorization time)
+      // Simulate Embedding Progress (Visual feedback for Chunking process)
       const processingSpeed = 10; 
-      const updateInterval = 200;
-      const totalSteps = 100 / processingSpeed * 5; 
+      const updateInterval = 100;
+      const totalSteps = 20; // Faster simulation for local chunking
       
       let steps = 0;
       const timer = setInterval(() => {
@@ -246,7 +233,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                           : f
                       )
                   }));
-              }, 500);
+              }, 200);
           }
       }, updateInterval);
   };
@@ -295,7 +282,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
 
       let progress = 0;
       const interval = setInterval(() => {
-          progress += 5;
+          progress += 10;
           setProject(prev => ({
               ...prev,
               knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => 
@@ -313,7 +300,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                       )
                   }));
                   setReindexingId(null);
-              }, 500);
+              }, 300);
           }
       }, 100);
   };
@@ -336,8 +323,8 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
       const noteFile: KnowledgeFile = {
           id: `n-${Date.now()}`,
           kbId: selectedKbId,
-          name: `Note: ${newNote.substring(0, 15)}...`,
-          size: `${newNote.length} chars`,
+          name: `笔记: ${newNote.substring(0, 10)}...`,
+          size: `${newNote.length} 字`,
           type: 'application/x-note',
           uploadDate: new Date().toLocaleTimeString(),
           status: 'indexed',
@@ -351,10 +338,9 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
   };
 
   const handleAddUrl = () => {
-      // Simulation of URL crawling
       if(!newUrl.trim() || !selectedKbId || !activeKb) return;
       
-      const simulatedContent = `[Simulated Crawl of ${newUrl}]\n\nNovel writing is an art form that requires patience, skill, and a touch of madness. The structure of a novel usually follows the three-act structure. \n\nCharacters must have flaws. A perfect character is boring. Give them internal conflict. The setting should be a character in itself.`;
+      const simulatedContent = `[已抓取页面: ${newUrl}]\n\n小说写作是一门需要耐心、技巧和一点疯狂的艺术。小说的结构通常遵循三幕式结构。\n\n人物必须有缺陷。完美的角色是无聊的。给他们内心冲突。背景设定本身就应该是一个角色。`;
       
       const chunkSize = activeKb.chunkSize ?? 512;
       const chunks = recursiveSplitText(simulatedContent, chunkSize, activeKb.chunkOverlap ?? 64);
@@ -377,7 +363,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
       
       let p = 0;
       const interval = setInterval(() => {
-          p += 10;
+          p += 20;
           setProject(prev => ({
               ...prev,
               knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => f.id === urlFile.id ? { ...f, progress: p } : f)
@@ -386,7 +372,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
               clearInterval(interval);
               setProject(prev => ({
                   ...prev,
-                  knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => f.id === urlFile.id ? { ...f, status: 'indexed', size: '15 KB (Crawled)', progress: 100 } : f)
+                  knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => f.id === urlFile.id ? { ...f, status: 'indexed', size: '15 KB (抓取)', progress: 100 } : f)
               }));
           }
       }, 100);
@@ -407,12 +393,11 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
   const performSearch = () => {
       if (!searchQuery.trim()) return;
       setIsSearching(true);
-      setAllSearchResults([]); // Clear previous
-      setVisibleResultsCount(10); // Reset pagination
+      setAllSearchResults([]); 
+      setVisibleResultsCount(10); 
 
       const startTime = performance.now();
       
-      // Simulation delay for "network/processing" feel
       setTimeout(() => {
           const currentFiles = project.knowledgeBaseFiles.filter(f => f.kbId === selectedKbId);
           const results: SearchResult[] = [];
@@ -421,7 +406,6 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           const queryTerms = lowerQuery.split(/\s+/).filter(t => t.length > 0);
 
           currentFiles.forEach(file => {
-             // We search inside CHUNKS now, not the whole content
              if (!file.chunks) return;
 
              file.chunks.forEach((chunk, index) => {
@@ -436,19 +420,16 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                  // 2. Term Density (Vector Similarity Sim)
                  let termMatches = 0;
                  queryTerms.forEach(term => {
-                     // Simple frequency count
                      const matches = lowerChunkText.split(term).length - 1;
                      if (matches > 0) termMatches += 1 + (matches * 0.1);
                  });
                  
                  if (queryTerms.length > 0) {
-                     score += (termMatches / (queryTerms.length * 2)) * 0.5; // Normalized
+                     score += (termMatches / (queryTerms.length * 2)) * 0.5; 
                  }
 
-                 // Recall Method Adjustments
                  if (recallMethod === 'keyword' && !lowerChunkText.includes(lowerQuery)) score = 0;
                  if (recallMethod === 'vector') {
-                     // Add some noise if score > 0 to simulate vector drift
                      if (score > 0) score += (Math.random() * 0.05);
                  }
 
@@ -457,7 +438,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                      
                      results.push({
                          id: `res-${file.id}-${chunk.id}`,
-                         text: chunk.text, // Return ACTUAL sliced chunk
+                         text: chunk.text, 
                          source: file.name,
                          score: score,
                          chunkIndex: index
@@ -466,7 +447,6 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
              });
           });
 
-          // Sort by score
           const sorted = results.sort((a,b) => b.score - a.score);
           
           setAllSearchResults(sorted);
@@ -477,17 +457,15 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
               reqId: `req-${Math.random().toString(16).substr(2, 8)}`
           });
           setIsSearching(false);
-      }, 600);
+      }, 400);
   };
 
   const handleLoadMore = () => {
       setVisibleResultsCount(prev => prev + 10);
   };
 
-  // Highlight helper
   const HighlightedText = ({ text, query }: { text: string, query: string }) => {
       if (!query) return <span>{text}</span>;
-      // Split by query terms for "Hybrid/Vector" style highlighting
       const terms = query.split(/\s+/).filter(t => t.length > 0).map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
       if (terms.length === 0) return <span>{text}</span>;
 
@@ -505,7 +483,6 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
       );
   };
 
-  // Filter files for current KB
   const currentFiles = project.knowledgeBaseFiles.filter(f => f.kbId === selectedKbId);
   
   const filteredList = currentFiles.filter(f => {
@@ -515,12 +492,10 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
       return false;
   });
 
-  // Derived visible results
   const visibleResults = allSearchResults.slice(0, visibleResultsCount);
 
   return (
     <div className="flex h-full animate-fade-in gap-4">
-       {/* Modal for Settings */}
        {showSettings && activeKb && (
            <RagSettingsModal 
                 config={activeKb} 
@@ -532,12 +507,12 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
        {/* LEFT SIDEBAR: KB List */}
        <div className="w-64 bg-[#151b28] border border-slate-700 rounded-xl flex flex-col overflow-hidden shadow-lg hidden md:flex">
            <div className="p-4 border-b border-slate-700 bg-[#0f1219]">
-               <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-2">Knowledge Bases</h3>
+               <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-2">知识库列表</h3>
                <button 
                   onClick={handleAddKb}
                   className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-bold transition-colors flex items-center justify-center gap-2"
                >
-                   <span>+</span> Create New
+                   <span>+</span> 新建知识库
                </button>
            </div>
            <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -554,11 +529,10 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                        <div className="flex justify-between items-start mb-1">
                            <h4 className={`text-sm font-medium truncate ${selectedKbId === kb.id ? 'text-white' : 'text-slate-400'}`}>{kb.name}</h4>
                            <div className="flex items-center gap-2">
-                               {/* Toggle */}
                                <div 
                                   onClick={(e) => handleToggleKb(kb.id, e)}
                                   className={`w-6 h-3 rounded-full relative transition-colors cursor-pointer ${kb.enabled ? 'bg-emerald-500' : 'bg-slate-600'}`}
-                                  title={kb.enabled ? 'Enabled' : 'Disabled'}
+                                  title={kb.enabled ? '已启用' : '已禁用'}
                                >
                                   <div className={`w-2 h-2 bg-white rounded-full absolute top-0.5 transition-all ${kb.enabled ? 'right-0.5' : 'left-0.5'}`}></div>
                                </div>
@@ -570,7 +544,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                               onClick={(e) => handleDeleteKb(kb.id, e)}
                               className="opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity"
                            >
-                               Trash
+                               删除
                            </button>
                        </div>
                    </div>
@@ -586,40 +560,44 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                    <div>
                        <h2 className="text-xl font-bold text-white flex items-center gap-2">
                            {activeKb.name}
-                           {!activeKb.enabled && <span className="bg-slate-700 text-slate-400 text-[10px] px-2 py-0.5 rounded">DISABLED</span>}
+                           {!activeKb.enabled && <span className="bg-slate-700 text-slate-400 text-[10px] px-2 py-0.5 rounded">已禁用</span>}
                        </h2>
                        <div className="flex gap-4 text-xs text-slate-400">
-                           <span className="flex items-center gap-1">Model: <span className="text-emerald-400">{activeKb.embeddingModel}</span></span>
-                           <span className="flex items-center gap-1">Chunk Size: <span className="text-indigo-400">{activeKb.chunkSize || 512}</span></span>
+                           <span className="flex items-center gap-1">模型: <span className="text-emerald-400">{activeKb.embeddingModel}</span></span>
+                           <span className="flex items-center gap-1">分段大小: <span className="text-indigo-400">{activeKb.chunkSize || 512}</span></span>
                        </div>
                    </div>
                    <button 
                       onClick={() => setShowSettings(true)}
                       className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white transition-colors border border-slate-700"
-                      title="KB Settings"
+                      title="知识库设置"
                    >
-                       ⚙️ Settings
+                       ⚙️ 设置
                    </button>
                </div>
            ) : (
                <div className="h-16 border-b border-slate-700 px-6 flex items-center bg-[#151b28]">
-                   <span className="text-slate-500">No Knowledge Base Selected</span>
+                   <span className="text-slate-500">未选择知识库</span>
                </div>
            )}
 
            {/* Tabs */}
            <div className="px-6 pt-4 border-b border-slate-700 bg-[#1e293b]">
                <div className="flex gap-6 text-sm font-medium">
-                   {['files', 'notes', 'urls'].map(tab => (
+                   {[
+                       {id: 'files', label: '文件'}, 
+                       {id: 'notes', label: '笔记'}, 
+                       {id: 'urls', label: '链接'}
+                   ].map(tab => (
                        <button 
-                          key={tab}
-                          onClick={() => setActiveTab(tab as any)}
-                          className={`pb-3 border-b-2 transition-all capitalize ${activeTab === tab ? 'text-emerald-500 border-emerald-500' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
+                          key={tab.id}
+                          onClick={() => setActiveTab(tab.id as any)}
+                          className={`pb-3 border-b-2 transition-all capitalize ${activeTab === tab.id ? 'text-emerald-500 border-emerald-500' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
                        >
-                           {tab} <span className="ml-1 bg-slate-800 text-[10px] px-1.5 rounded-full text-slate-400">
+                           {tab.label} <span className="ml-1 bg-slate-800 text-[10px] px-1.5 rounded-full text-slate-400">
                                {currentFiles.filter(f => {
-                                   if (tab === 'files') return !f.type.includes('note') && !f.type.includes('html');
-                                   if (tab === 'notes') return f.type.includes('note');
+                                   if (tab.id === 'files') return !f.type.includes('note') && !f.type.includes('html');
+                                   if (tab.id === 'notes') return f.type.includes('note');
                                    return f.type.includes('html');
                                }).length}
                            </span>
@@ -629,7 +607,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                       onClick={() => setActiveTab('test')}
                       className={`pb-3 border-b-2 transition-all flex items-center gap-2 ${activeTab === 'test' ? 'text-blue-400 border-blue-400 font-bold' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
                    >
-                       知识检索 (Search Test)
+                       召回测试
                    </button>
                </div>
            </div>
@@ -667,8 +645,8 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                                    <span>检索结果: {allSearchResults.length} 个</span>
                                    {allSearchResults.length > 0 && (
                                        <>
-                                           <span className="border-l border-slate-700 pl-4">单次检索耗时 {searchMeta.time.toFixed(3)} s</span>
-                                           <span className="border-l border-slate-700 pl-4">Token消耗 {searchMeta.tokens}</span>
+                                           <span className="border-l border-slate-700 pl-4">耗时 {searchMeta.time.toFixed(3)} s</span>
+                                           <span className="border-l border-slate-700 pl-4">Token {searchMeta.tokens}</span>
                                            <span className="border-l border-slate-700 pl-4 truncate max-w-[150px]">ID {searchMeta.reqId}</span>
                                        </>
                                    )}
@@ -693,9 +671,9 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                                                    <div className="flex justify-between items-start mb-2">
                                                        <div className="flex items-center gap-2">
                                                             <h4 className="text-sm font-bold text-slate-200">{idx + 1}. {res.source}</h4>
-                                                            <span className="text-[10px] text-slate-500 font-mono bg-slate-900 px-1 rounded">Chunk #{res.chunkIndex}</span>
+                                                            <span className="text-[10px] text-slate-500 font-mono bg-slate-900 px-1 rounded">切片 #{res.chunkIndex}</span>
                                                        </div>
-                                                       <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">Score: {res.score.toFixed(4)}</span>
+                                                       <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">得分: {res.score.toFixed(4)}</span>
                                                    </div>
                                                    <div className="text-sm text-slate-300 leading-relaxed font-serif whitespace-pre-line">
                                                        <HighlightedText text={res.text} query={searchQuery} />
@@ -710,50 +688,50 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                                                        onClick={handleLoadMore}
                                                        className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-full text-xs font-bold transition-all border border-slate-600 shadow-lg"
                                                    >
-                                                       ↓ Load More ({allSearchResults.length - visibleResultsCount} remaining)
+                                                       ↓ 加载更多 (剩余 {allSearchResults.length - visibleResultsCount})
                                                    </button>
                                                </div>
                                            )}
                                        </>
                                    ) : (
                                        <div className="text-center text-slate-500 py-10">
-                                           {searchQuery ? "未找到相关切片 (No chunks matched)" : "请输入关键词开始检索"}
+                                           {searchQuery ? "未找到相关切片" : "请输入关键词开始检索"}
                                        </div>
                                    )}
                                </div>
                            </div>
                        </div>
 
-                       {/* Right: Settings Panel */}
-                       <div className="w-80 bg-white border-l border-slate-200 text-slate-800 flex flex-col">
-                           <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-                               <h3 className="font-bold text-slate-800">检索参数设置</h3>
-                               <button className="text-slate-400 hover:text-blue-500" title="Reset">
+                       {/* Right: Settings Panel (Dark Theme) */}
+                       <div className="w-80 bg-[#0f1219] border-l border-slate-700 text-slate-200 flex flex-col">
+                           <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-[#151b28]">
+                               <h3 className="font-bold text-slate-200">检索参数设置</h3>
+                               <button className="text-slate-500 hover:text-blue-400" title="重置">
                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                                </button>
                            </div>
                            
-                           <div className="p-4 overflow-y-auto flex-1 space-y-6">
+                           <div className="p-4 overflow-y-auto flex-1 space-y-6 custom-scrollbar">
                                {/* Recall Settings */}
                                <div>
-                                   <h4 className="text-sm font-bold text-slate-600 mb-3">召回设置</h4>
+                                   <h4 className="text-sm font-bold text-slate-400 mb-3">召回设置</h4>
                                    
                                    <div className="space-y-3">
                                        <div className="flex justify-between items-center cursor-pointer">
                                            <label className="text-sm text-slate-500">召回方式</label>
-                                           <span className="text-slate-400 text-xs transform -rotate-90">›</span>
+                                           <span className="text-slate-500 text-xs transform -rotate-90">›</span>
                                        </div>
                                        
                                        {/* Recall Method Selection */}
-                                       <div className="border border-blue-100 rounded-lg p-3 bg-blue-50/50 space-y-3">
-                                           <label className="flex items-start gap-2 cursor-pointer">
-                                               <input type="radio" name="recall" checked={recallMethod === 'hybrid'} onChange={() => setRecallMethod('hybrid')} className="mt-1 text-blue-600 focus:ring-blue-500" />
+                                       <div className="border border-slate-700 rounded-lg p-3 bg-slate-800/50 space-y-3">
+                                           <label className="flex items-start gap-2 cursor-pointer group">
+                                               <input type="radio" name="recall" checked={recallMethod === 'hybrid'} onChange={() => setRecallMethod('hybrid')} className="mt-1 text-blue-500 focus:ring-blue-500 bg-slate-900 border-slate-600" />
                                                <div>
-                                                   <span className="block text-sm font-bold text-slate-700">混合检索</span>
+                                                   <span className="block text-sm font-bold text-slate-300 group-hover:text-white">混合检索</span>
                                                    <span className="block text-xs text-slate-500 mt-1">结合向量检索与关键词检索，返回两种结果中最匹配用户问题的文件。</span>
                                                    
                                                    {recallMethod === 'hybrid' && (
-                                                       <div className="mt-2">
+                                                       <div className="mt-2 animate-fade-in">
                                                            <div className="flex justify-between text-xs text-slate-500 mb-1">
                                                                <span>向量检索占比</span>
                                                                <span>{vectorRatio}</span>
@@ -761,25 +739,25 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                                                            <input 
                                                               type="range" min="0" max="1" step="0.1" 
                                                               value={vectorRatio} onChange={(e) => setVectorRatio(parseFloat(e.target.value))}
-                                                              className="w-full h-1 bg-blue-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                                              className="w-full h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
                                                            />
                                                        </div>
                                                    )}
                                                </div>
                                            </label>
 
-                                           <label className="flex items-start gap-2 cursor-pointer">
-                                               <input type="radio" name="recall" checked={recallMethod === 'vector'} onChange={() => setRecallMethod('vector')} className="mt-1 text-blue-600 focus:ring-blue-500" />
+                                           <label className="flex items-start gap-2 cursor-pointer group">
+                                               <input type="radio" name="recall" checked={recallMethod === 'vector'} onChange={() => setRecallMethod('vector')} className="mt-1 text-blue-500 focus:ring-blue-500 bg-slate-900 border-slate-600" />
                                                <div>
-                                                   <span className="block text-sm font-bold text-slate-700">向量检索</span>
+                                                   <span className="block text-sm font-bold text-slate-300 group-hover:text-white">向量检索</span>
                                                    <span className="block text-xs text-slate-500 mt-1">通过向量化方式进行问题和文本段落的向量相似度匹配。</span>
                                                </div>
                                            </label>
 
-                                           <label className="flex items-start gap-2 cursor-pointer">
-                                               <input type="radio" name="recall" checked={recallMethod === 'keyword'} onChange={() => setRecallMethod('keyword')} className="mt-1 text-blue-600 focus:ring-blue-500" />
+                                           <label className="flex items-start gap-2 cursor-pointer group">
+                                               <input type="radio" name="recall" checked={recallMethod === 'keyword'} onChange={() => setRecallMethod('keyword')} className="mt-1 text-blue-500 focus:ring-blue-500 bg-slate-900 border-slate-600" />
                                                <div>
-                                                   <span className="block text-sm font-bold text-slate-700">关键词检索</span>
+                                                   <span className="block text-sm font-bold text-slate-300 group-hover:text-white">关键词检索</span>
                                                    <span className="block text-xs text-slate-500 mt-1">根据用户关键词精确匹配文本。</span>
                                                </div>
                                            </label>
@@ -790,52 +768,52 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                                {/* Parameters */}
                                <div className="space-y-4">
                                    <div className="flex justify-between items-center">
-                                       <span className="text-sm text-slate-600">Rerank ⓘ</span>
+                                       <span className="text-sm text-slate-400">Rerank (重排) ⓘ</span>
                                        <div 
                                           onClick={() => setEnableRerank(!enableRerank)}
-                                          className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${enableRerank ? 'bg-blue-600' : 'bg-slate-300'}`}
+                                          className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${enableRerank ? 'bg-blue-600' : 'bg-slate-700'}`}
                                        >
                                            <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${enableRerank ? 'right-0.5' : 'left-0.5'}`}></div>
                                        </div>
                                    </div>
 
                                    <div>
-                                       <div className="flex justify-between text-sm text-slate-600 mb-2">
-                                           <span>召回数量 (Candidates) ⓘ</span>
-                                           <span className="border border-slate-200 px-2 rounded bg-white text-xs py-0.5">{topK}</span>
+                                       <div className="flex justify-between text-sm text-slate-400 mb-2">
+                                           <span>召回数量 (Top K) ⓘ</span>
+                                           <span className="border border-slate-700 px-2 rounded bg-slate-800 text-xs py-0.5 text-slate-300">{topK}</span>
                                        </div>
                                        <input 
                                           type="range" min="10" max="100" 
                                           value={topK} onChange={(e) => setTopK(parseInt(e.target.value))}
-                                          className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                          className="w-full h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
                                        />
-                                       <div className="text-[10px] text-slate-400 mt-1 text-right">Visible: {visibleResultsCount}</div>
+                                       <div className="text-[10px] text-slate-500 mt-1 text-right">当前显示: {visibleResultsCount}</div>
                                    </div>
 
                                    <div>
-                                       <div className="flex justify-between text-sm text-slate-600 mb-2">
-                                           <span>召回分数 ⓘ</span>
-                                           <span className="border border-slate-200 px-2 rounded bg-white text-xs py-0.5">{minScore}</span>
+                                       <div className="flex justify-between text-sm text-slate-400 mb-2">
+                                           <span>召回分数 (Min Score) ⓘ</span>
+                                           <span className="border border-slate-700 px-2 rounded bg-slate-800 text-xs py-0.5 text-slate-300">{minScore}</span>
                                        </div>
                                        <input 
                                           type="range" min="0" max="1" step="0.05"
                                           value={minScore} onChange={(e) => setMinScore(parseFloat(e.target.value))}
-                                          className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                          className="w-full h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
                                        />
                                    </div>
 
                                    <div className="flex justify-between items-center opacity-50">
-                                       <span className="text-sm text-slate-600">QA干预 ⓘ</span>
-                                       <div className="w-10 h-5 rounded-full bg-slate-300 relative"><div className="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5"></div></div>
+                                       <span className="text-sm text-slate-400">QA干预 ⓘ</span>
+                                       <div className="w-10 h-5 rounded-full bg-slate-700 relative"><div className="w-4 h-4 bg-slate-400 rounded-full absolute top-0.5 left-0.5"></div></div>
                                    </div>
                                </div>
 
                                {/* Filters */}
                                <div>
-                                   <h4 className="text-sm font-bold text-slate-600 mb-3">文件范围</h4>
+                                   <h4 className="text-sm font-bold text-slate-400 mb-3">文件范围</h4>
                                    <div className="flex justify-between items-center">
-                                       <span className="text-sm text-slate-600">按标签筛选 ⓘ</span>
-                                       <div className="w-10 h-5 rounded-full bg-slate-300 relative"><div className="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5"></div></div>
+                                       <span className="text-sm text-slate-400">按标签筛选 ⓘ</span>
+                                       <div className="w-10 h-5 rounded-full bg-slate-700 relative"><div className="w-4 h-4 bg-slate-400 rounded-full absolute top-0.5 left-0.5"></div></div>
                                    </div>
                                </div>
                            </div>
@@ -849,9 +827,9 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                        {/* Actions */}
                        <div className="flex justify-between mb-4">
                            <div className="text-sm text-slate-400 flex items-center gap-2">
-                               {activeTab === 'files' && 'Manage your source documents.'}
-                               {activeTab === 'notes' && 'Quick thoughts & raw text inputs.'}
-                               {activeTab === 'urls' && 'Web pages to crawl & index.'}
+                               {activeTab === 'files' && '管理您的源文件文档。'}
+                               {activeTab === 'notes' && '快速记录想法与灵感。'}
+                               {activeTab === 'urls' && '抓取网页内容建立索引。'}
                            </div>
 
                            {activeTab === 'files' && (
@@ -861,20 +839,20 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                                     onClick={() => fileInputRef.current?.click()}
                                     className="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium px-4 py-2 rounded-lg flex items-center gap-2 shadow-lg shadow-emerald-900/20"
                                  >
-                                    <span>+</span> Upload Files
+                                    <span>+</span> 上传文件
                                  </button>
                                </>
                            )}
                            {activeTab === 'notes' && (
                                <div className="flex gap-2 w-1/2">
-                                   <input value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="Type a note..." className="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-1 text-sm text-white focus:border-emerald-500 focus:outline-none" onKeyDown={(e) => e.key === 'Enter' && handleAddNote()} />
-                                   <button onClick={handleAddNote} className="bg-slate-700 hover:bg-slate-600 px-3 rounded text-white text-sm">Add</button>
+                                   <input value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="输入笔记内容..." className="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-1 text-sm text-white focus:border-emerald-500 focus:outline-none" onKeyDown={(e) => e.key === 'Enter' && handleAddNote()} />
+                                   <button onClick={handleAddNote} className="bg-slate-700 hover:bg-slate-600 px-3 rounded text-white text-sm">添加</button>
                                </div>
                            )}
                            {activeTab === 'urls' && (
                                <div className="flex gap-2 w-1/2">
                                    <input value={newUrl} onChange={(e) => setNewUrl(e.target.value)} placeholder="https://..." className="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-1 text-sm text-white focus:border-emerald-500 focus:outline-none" onKeyDown={(e) => e.key === 'Enter' && handleAddUrl()} />
-                                   <button onClick={handleAddUrl} className="bg-slate-700 hover:bg-slate-600 px-3 rounded text-white text-sm">Crawl</button>
+                                   <button onClick={handleAddUrl} className="bg-slate-700 hover:bg-slate-600 px-3 rounded text-white text-sm">抓取</button>
                                </div>
                            )}
                        </div>
@@ -889,9 +867,9 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                        >
                            {filteredList.length === 0 ? (
                                 <div className="text-center text-slate-500 py-20">
-                                    {activeTab === 'files' && 'Drag & drop text files here (txt, md, json).'}
-                                    {activeTab === 'notes' && 'No notes yet.'}
-                                    {activeTab === 'urls' && 'No URLs added.'}
+                                    {activeTab === 'files' && '拖拽文件到这里 (txt, md, json).'}
+                                    {activeTab === 'notes' && '暂无笔记。'}
+                                    {activeTab === 'urls' && '暂无链接。'}
                                 </div>
                            ) : (
                                filteredList.map(file => (
@@ -907,25 +885,25 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                                                 </div>
                                                 <div>
                                                     <h4 className="text-slate-200 text-sm font-medium line-clamp-1">{file.name}</h4>
-                                                    <p className="text-xs text-slate-500">{file.uploadDate} · {file.size} · {file.totalChunks || 0} Chunks</p>
+                                                    <p className="text-xs text-slate-500">{file.uploadDate} · {file.size} · {file.totalChunks || 0} 切片</p>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-3">
                                                 {file.status === 'indexed' ? (
                                                     <div className="flex items-center gap-2 text-xs text-emerald-500 bg-emerald-900/20 px-2 py-0.5 rounded">
-                                                        <span>Indexed</span>
+                                                        <span>已索引</span>
                                                     </div>
                                                 ) : file.status === 'processing' ? (
                                                     <div className="flex items-center gap-2 text-xs text-amber-500 bg-amber-900/20 px-2 py-0.5 rounded">
-                                                        <span className="animate-spin">⟳</span> Processing...
+                                                        <span className="animate-spin">⟳</span> 处理中...
                                                     </div>
                                                 ) : (
-                                                    <div className="text-xs text-red-500">Error</div>
+                                                    <div className="text-xs text-red-500">错误</div>
                                                 )}
                                                 
                                                 <button 
                                                     className="text-slate-500 hover:text-emerald-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity" 
-                                                    title="Re-index" 
+                                                    title="重新索引" 
                                                     onClick={() => handleReindex(file.id)}
                                                     disabled={reindexingId === file.id || file.status === 'processing'}
                                                 >
@@ -936,7 +914,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
 
                                                 <button 
                                                     className="text-slate-500 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity" 
-                                                    title="Delete" 
+                                                    title="删除" 
                                                     onClick={() => handleDeleteFile(file.id)}
                                                 >
                                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -948,7 +926,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                                        {file.status === 'processing' && typeof file.progress === 'number' && (
                                            <div className="mt-3">
                                                <div className="flex justify-between text-[10px] text-slate-400 mb-1">
-                                                   <span>Chunking & Embedding</span>
+                                                   <span>切片与本地索引中... (无需API)</span>
                                                    <span>{Math.round(file.progress)}%</span>
                                                </div>
                                                <div className="w-full h-1 bg-slate-700 rounded-full overflow-hidden">
