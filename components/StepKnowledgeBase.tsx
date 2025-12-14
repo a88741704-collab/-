@@ -1,9 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { ProjectState, KnowledgeFile } from '../types';
+import { ProjectState, KnowledgeFile, RAGConfig } from '../types';
+import RagSettingsModal from './RagSettingsModal';
 
 interface Props {
   project: ProjectState;
-  setProject: (p: ProjectState) => void;
+  setProject: React.Dispatch<React.SetStateAction<ProjectState>>;
 }
 
 const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
@@ -11,6 +12,7 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
   const [activeTab, setActiveTab] = useState<'files' | 'notes' | 'urls'>('files');
   const [dragActive, setDragActive] = useState(false);
   const [reindexingId, setReindexingId] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   
   // Inputs
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -29,26 +31,71 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
   };
 
   const processFile = (file: File) => {
+      // 1. Initial Entry
       const newFile: KnowledgeFile = {
           id: `f-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           name: file.name,
           size: `${(file.size / 1024).toFixed(1)} KB`,
           type: file.type || 'text/plain',
           uploadDate: new Date().toLocaleTimeString(),
-          status: 'processing'
+          status: 'processing',
+          progress: 0,
+          totalChunks: 0
       };
 
-      // Add to state immediately as processing
-      const updatedFiles = [...(project.knowledgeBaseFiles || []), newFile];
-      setProject({ ...project, knowledgeBaseFiles: updatedFiles });
+      setProject(prev => ({
+          ...prev, 
+          knowledgeBaseFiles: [...(prev.knowledgeBaseFiles || []), newFile]
+      }));
 
-      // Simulate async processing/indexing
-      setTimeout(() => {
-          const filesAfterIndex = updatedFiles.map(f => 
-             f.id === newFile.id ? { ...f, status: 'indexed' as const } : f
-          );
-          setProject({ ...project, knowledgeBaseFiles: filesAfterIndex });
-      }, 1500 + Math.random() * 2000);
+      // 2. Calculate Simulation Parameters
+      // Realistic Simulation: Large files take longer. 
+      // Assume Chunk Size from config (default 512 chars)
+      const chunkSize = project.agentConfig.ragConfig.chunkSize || 512;
+      // Estimate chunks based on file size (assuming mostly text, 1 byte ~= 1 char for estimation)
+      const estimatedChunks = Math.max(1, Math.ceil(file.size / chunkSize));
+      
+      // Simulation Speed: 
+      // Let's assume a realistic embedding API throughput of ~20-50 chunks per second.
+      // We'll use 20 chunks/sec to give a "working" feel.
+      const processingSpeed = 20; // chunks per second
+      const updateInterval = 200; // ms
+      const chunksPerTick = Math.max(1, Math.ceil(processingSpeed * (updateInterval / 1000)));
+
+      let processedChunks = 0;
+
+      const timer = setInterval(() => {
+          processedChunks += chunksPerTick;
+          // Add some randomness to simulate network latency variance
+          if (Math.random() > 0.7) processedChunks += Math.floor(Math.random() * 5);
+
+          const rawProgress = (processedChunks / estimatedChunks) * 100;
+          const progress = Math.min(99, rawProgress); // Don't hit 100 until fully done clearing interval
+
+          setProject(prev => ({
+              ...prev,
+              knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => 
+                  f.id === newFile.id 
+                  ? { ...f, progress: progress, totalChunks: estimatedChunks } 
+                  : f
+              )
+          }));
+
+          if (processedChunks >= estimatedChunks) {
+              clearInterval(timer);
+              // Finalize after a small "finishing" delay
+              setTimeout(() => {
+                  setProject(prev => ({
+                      ...prev,
+                      knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => 
+                          f.id === newFile.id 
+                          ? { ...f, status: 'indexed', progress: 100 } 
+                          : f
+                      )
+                  }));
+              }, 600);
+          }
+      }, updateInterval);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -67,30 +114,53 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
   };
 
   const handleDelete = (id: string) => {
-      setProject({
-          ...project,
-          knowledgeBaseFiles: (project.knowledgeBaseFiles || []).filter(f => f.id !== id)
-      });
+      setProject(prev => ({
+          ...prev,
+          knowledgeBaseFiles: (prev.knowledgeBaseFiles || []).filter(f => f.id !== id)
+      }));
   };
 
   const handleReindex = (id: string) => {
       if (reindexingId) return;
       setReindexingId(id);
       
-      // Update status to processing
-      const updatedFiles = (project.knowledgeBaseFiles || []).map(f => 
-          f.id === id ? { ...f, status: 'processing' as const } : f
-      );
-      setProject({ ...project, knowledgeBaseFiles: updatedFiles });
+      const targetFile = project.knowledgeBaseFiles.find(f => f.id === id);
+      const estSize = targetFile ? parseInt(targetFile.size) * 1024 : 10000;
+      const chunkSize = project.agentConfig.ragConfig.chunkSize || 512;
+      const estChunks = Math.ceil(estSize / chunkSize);
 
-      // Simulate API call
-      setTimeout(() => {
-          const finishedFiles = updatedFiles.map(f => 
-             f.id === id ? { ...f, status: 'indexed' as const } : f
-          );
-          setProject({ ...project, knowledgeBaseFiles: finishedFiles });
-          setReindexingId(null);
-      }, 2000);
+      // Update status to processing
+      setProject(prev => ({
+          ...prev,
+          knowledgeBaseFiles: (prev.knowledgeBaseFiles || []).map(f => 
+             f.id === id ? { ...f, status: 'processing', progress: 0, totalChunks: estChunks } : f
+          )
+      }));
+
+      // Simulate Re-indexing
+      let progress = 0;
+      const interval = setInterval(() => {
+          progress += 5;
+          setProject(prev => ({
+              ...prev,
+              knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => 
+                  f.id === id ? { ...f, progress: Math.min(99, progress) } : f
+              )
+          }));
+
+          if (progress >= 100) {
+              clearInterval(interval);
+              setTimeout(() => {
+                  setProject(prev => ({
+                      ...prev,
+                      knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => 
+                          f.id === id ? { ...f, status: 'indexed', progress: 100 } : f
+                      )
+                  }));
+                  setReindexingId(null);
+              }, 500);
+          }
+      }, 100);
   };
 
   // Handlers for Notes
@@ -102,12 +172,13 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           size: `${newNote.length} chars`,
           type: 'application/x-note',
           uploadDate: new Date().toLocaleTimeString(),
-          status: 'indexed'
+          status: 'indexed',
+          progress: 100
       };
-      setProject({
-          ...project,
-          knowledgeBaseFiles: [...(project.knowledgeBaseFiles || []), noteFile]
-      });
+      setProject(prev => ({
+          ...prev,
+          knowledgeBaseFiles: [...(prev.knowledgeBaseFiles || []), noteFile]
+      }));
       setNewNote('');
   };
 
@@ -120,21 +191,41 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
           size: 'Web Page',
           type: 'text/html',
           uploadDate: new Date().toLocaleTimeString(),
-          status: 'processing'
+          status: 'processing',
+          progress: 0
       };
-      const updatedFiles = [...(project.knowledgeBaseFiles || []), urlFile];
-      setProject({ ...project, knowledgeBaseFiles: updatedFiles });
+      setProject(prev => ({
+          ...prev,
+          knowledgeBaseFiles: [...(prev.knowledgeBaseFiles || []), urlFile]
+      }));
       setNewUrl('');
 
       // Simulate crawling
-      setTimeout(() => {
-          setProject({
-              ...project,
-              knowledgeBaseFiles: updatedFiles.map(f => 
-                  f.id === urlFile.id ? { ...f, status: 'indexed', size: '15 KB (Crawled)' } : f
+      let p = 0;
+      const interval = setInterval(() => {
+          p += 2;
+           setProject(prev => ({
+              ...prev,
+              knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => 
+                  f.id === urlFile.id ? { ...f, progress: p } : f
               )
-          });
-      }, 3000);
+          }));
+          if(p >= 100) {
+              clearInterval(interval);
+              setProject(prev => ({
+                  ...prev,
+                  knowledgeBaseFiles: prev.knowledgeBaseFiles.map(f => 
+                      f.id === urlFile.id ? { ...f, status: 'indexed', size: '15 KB (Crawled)', progress: 100 } : f
+                  )
+              }));
+          }
+      }, 50);
+  };
+
+  const handleSaveSettings = (newRagConfig: RAGConfig) => {
+      const newAgentConfig = { ...project.agentConfig, ragConfig: newRagConfig };
+      setProject({ ...project, agentConfig: newAgentConfig });
+      setShowSettings(false);
   };
 
   const filteredFiles = (project.knowledgeBaseFiles || []).filter(f => {
@@ -145,7 +236,16 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
   });
 
   return (
-    <div className="flex flex-col h-full animate-fade-in space-y-4">
+    <div className="flex flex-col h-full animate-fade-in space-y-4 relative">
+       {/* Modal for Settings */}
+       {showSettings && (
+           <RagSettingsModal 
+                config={ragConfig} 
+                onSave={handleSaveSettings} 
+                onClose={() => setShowSettings(false)} 
+           />
+       )}
+
        {/* Header with RAG Config Summary */}
        <div className="flex items-center justify-between border-b border-slate-700 pb-4">
            <div>
@@ -167,8 +267,12 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                </div>
            </div>
            <div>
-               <button className="p-2 text-slate-400 hover:text-white transition-colors" title="Settings">
-                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+               <button 
+                  onClick={() => setShowSettings(true)}
+                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors" 
+                  title="知识库 API 与切片设置"
+               >
+                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                </button>
            </div>
        </div>
@@ -262,52 +366,75 @@ const StepKnowledgeBase: React.FC<Props> = ({ project, setProject }) => {
                     <div className="text-center text-slate-500 py-10">该分类下暂无内容。</div>
                ) : (
                    filteredFiles.map(file => (
-                       <div key={file.id} className="bg-slate-800/50 border border-slate-700 rounded-lg p-3 flex items-center justify-between group hover:border-slate-600 transition-all">
-                           <div className="flex items-center gap-3">
-                               <div className={`w-10 h-10 rounded flex items-center justify-center font-bold text-sm ${
-                                   file.type.includes('note') ? 'bg-indigo-900/50 text-indigo-400' :
-                                   file.type.includes('html') ? 'bg-blue-900/50 text-blue-400' :
-                                   'bg-slate-700 text-slate-300'
-                               }`}>
-                                   {file.type.includes('note') ? 'TXT' : file.type.includes('html') ? 'WEB' : file.name.split('.').pop()?.toUpperCase().substring(0,3)}
-                               </div>
-                               <div>
-                                   <h4 className="text-slate-200 text-sm font-medium line-clamp-1">{file.name}</h4>
-                                   <p className="text-xs text-slate-500">{file.uploadDate} · {file.size}</p>
-                               </div>
-                           </div>
-                           <div className="flex items-center gap-3">
-                               {file.status === 'indexed' ? (
-                                   <div className="flex items-center gap-2 text-xs text-emerald-500 bg-emerald-900/20 px-2 py-0.5 rounded">
-                                       <span>已索引</span>
-                                   </div>
-                               ) : file.status === 'processing' ? (
-                                   <div className="flex items-center gap-2 text-xs text-amber-500 bg-amber-900/20 px-2 py-0.5 rounded">
-                                       <span className="animate-spin">⟳</span> 处理中
-                                   </div>
-                               ) : (
-                                   <div className="text-xs text-red-500">错误</div>
-                               )}
-                               
-                               <button 
-                                   className="text-slate-500 hover:text-emerald-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity" 
-                                   title="重新索引 (Refresh)" 
-                                   onClick={() => handleReindex(file.id)}
-                                   disabled={reindexingId === file.id || file.status === 'processing'}
-                               >
-                                   <svg className={`w-4 h-4 ${reindexingId === file.id ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                   </svg>
-                               </button>
+                       <div key={file.id} className="bg-slate-800/50 border border-slate-700 rounded-lg p-3 group hover:border-slate-600 transition-all">
+                           <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-10 h-10 rounded flex items-center justify-center font-bold text-sm ${
+                                        file.type.includes('note') ? 'bg-indigo-900/50 text-indigo-400' :
+                                        file.type.includes('html') ? 'bg-blue-900/50 text-blue-400' :
+                                        'bg-slate-700 text-slate-300'
+                                    }`}>
+                                        {file.type.includes('note') ? 'TXT' : file.type.includes('html') ? 'WEB' : file.name.split('.').pop()?.toUpperCase().substring(0,3)}
+                                    </div>
+                                    <div>
+                                        <h4 className="text-slate-200 text-sm font-medium line-clamp-1">{file.name}</h4>
+                                        <p className="text-xs text-slate-500">{file.uploadDate} · {file.size}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    {file.status === 'indexed' ? (
+                                        <div className="flex items-center gap-2 text-xs text-emerald-500 bg-emerald-900/20 px-2 py-0.5 rounded">
+                                            <span>已索引</span>
+                                        </div>
+                                    ) : file.status === 'processing' ? (
+                                        <div className="flex items-center gap-2 text-xs text-amber-500 bg-amber-900/20 px-2 py-0.5 rounded">
+                                            <span className="animate-spin">⟳</span> 切片嵌入中...
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-red-500">错误</div>
+                                    )}
+                                    
+                                    <button 
+                                        className="text-slate-500 hover:text-emerald-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity" 
+                                        title="重新索引 (Refresh)" 
+                                        onClick={() => handleReindex(file.id)}
+                                        disabled={reindexingId === file.id || file.status === 'processing'}
+                                    >
+                                        <svg className={`w-4 h-4 ${reindexingId === file.id ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                    </button>
 
-                               <button 
-                                   className="text-slate-500 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity" 
-                                   title="删除" 
-                                   onClick={() => handleDelete(file.id)}
-                               >
-                                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                               </button>
+                                    <button 
+                                        className="text-slate-500 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity" 
+                                        title="删除" 
+                                        onClick={() => handleDelete(file.id)}
+                                    >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                    </button>
+                                </div>
                            </div>
+                           
+                           {/* Processing Progress Bar */}
+                           {file.status === 'processing' && typeof file.progress === 'number' && (
+                               <div className="mt-3">
+                                   <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                                       <span>切片与嵌入 (Chunking & Embedding)</span>
+                                       <span>{Math.round(file.progress)}%</span>
+                                   </div>
+                                   <div className="w-full h-1 bg-slate-700 rounded-full overflow-hidden">
+                                       <div 
+                                           className="h-full bg-emerald-500 transition-all duration-300 ease-out" 
+                                           style={{ width: `${file.progress}%` }}
+                                       ></div>
+                                   </div>
+                                   {file.totalChunks && (
+                                       <div className="text-[9px] text-slate-600 mt-1 text-right font-mono">
+                                           Chunks: {Math.floor((file.progress / 100) * file.totalChunks)} / {file.totalChunks}
+                                       </div>
+                                   )}
+                               </div>
+                           )}
                        </div>
                    ))
                )}

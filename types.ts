@@ -98,6 +98,8 @@ export interface KnowledgeFile {
   type: string;
   uploadDate: string;
   status: 'indexed' | 'processing' | 'error';
+  progress?: number; // 0-100 percentage
+  totalChunks?: number; // Estimated chunks for display
 }
 
 export type AgentStatus = 'idle' | 'thinking' | 'generating' | 'error';
