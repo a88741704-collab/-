@@ -8,8 +8,10 @@ import StepOutline from './components/StepOutline';
 import StepWriter from './components/StepWriter';
 import StepKnowledgeBase from './components/StepKnowledgeBase'; // Import the new component
 import StatusPanel from './components/StatusPanel';
+import { get, set } from 'idb-keyval'; // Import IndexedDB wrapper
 
 const INITIAL_RAG_ID = 'kb-default-01';
+const STORAGE_KEY = 'novel_craft_project_v1';
 
 const INITIAL_PROJECT: ProjectState = {
   agentConfig: {
@@ -83,8 +85,29 @@ export default function App() {
   const [currentStep, setCurrentStep] = useState<PipelineStep>(PipelineStep.Configuration);
   const [project, setProject] = useState<ProjectState>(INITIAL_PROJECT);
   const [hasKey, setHasKey] = useState(false);
+  
+  // Persistence States
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
+  // 1. Load Data on Mount
   useEffect(() => {
+    const loadData = async () => {
+      try {
+        const savedProject = await get(STORAGE_KEY);
+        if (savedProject) {
+          // Merge with initial to ensure new schema fields exist if updated
+          setProject({ ...INITIAL_PROJECT, ...savedProject, agentStatus: 'idle', agentTask: '已恢复上次工作状态' });
+        }
+      } catch (e) {
+        console.error("Failed to load project", e);
+      } finally {
+        setIsLoaded(true);
+      }
+    };
+    loadData();
+
+    // Check for AISTUDIO key (Google specific)
     const checkKey = async () => {
       if (window.aistudio && window.aistudio.hasSelectedApiKey) {
         const selected = await window.aistudio.hasSelectedApiKey();
@@ -93,6 +116,19 @@ export default function App() {
     };
     checkKey();
   }, []);
+
+  // 2. Auto-Save Data on Change (Debounced)
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    const timer = setTimeout(() => {
+      set(STORAGE_KEY, project)
+        .then(() => setLastSaved(new Date()))
+        .catch(err => console.error("Save failed", err));
+    }, 1000); // Save 1 second after last change
+
+    return () => clearTimeout(timer);
+  }, [project, isLoaded]);
 
   const handleSelectKey = async () => {
     if (window.aistudio && window.aistudio.openSelectKey) {
@@ -129,7 +165,20 @@ export default function App() {
 
   // Logic Update: Only show blocker if NO Google Key AND (Provider is Google OR Custom Key is missing)
   const isCustomConfigured = project.agentConfig.provider === 'custom' && !!project.agentConfig.customApiKey;
-  const showWelcomeBlocker = !hasKey && !isCustomConfigured && currentStep !== PipelineStep.Configuration;
+  // If loaded, and we have custom config, don't block.
+  // Wait for load to finish before deciding to block to prevent flicker
+  const showWelcomeBlocker = isLoaded && !hasKey && !isCustomConfigured && currentStep !== PipelineStep.Configuration;
+
+  if (!isLoaded) {
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-[#0f172a] text-slate-400">
+              <div className="flex flex-col items-center gap-4">
+                  <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                  <p>正在从本地数据库恢复数据...</p>
+              </div>
+          </div>
+      );
+  }
 
   if (showWelcomeBlocker) {
     return (
@@ -171,15 +220,22 @@ export default function App() {
             <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/30">N</div>
             <h1 className="text-lg font-bold tracking-tight text-white">NovelCraft <span className="text-indigo-400">AI</span></h1>
         </div>
-        <div className="text-xs text-slate-500 hidden md:flex items-center gap-3">
-           <div className="px-3 py-1 bg-slate-800 rounded-full border border-slate-700">
-             {project.agentConfig.provider === 'custom' ? `🚀 Custom: ${project.agentConfig.model}` : `⚡ Google: ${project.agentConfig.model}`}
-           </div>
-           {activeKbsCount > 0 && (
-               <div className="px-3 py-1 bg-emerald-900/30 text-emerald-400 rounded-full border border-emerald-800/50 flex items-center gap-1">
-                   <span>📚 RAG Enabled: {activeKbsCount}</span>
-               </div>
-           )}
+        <div className="flex items-center gap-4">
+            {lastSaved && (
+                <span className="text-[10px] text-slate-500 font-mono hidden sm:block animate-fade-in">
+                    已自动保存 {lastSaved.toLocaleTimeString()}
+                </span>
+            )}
+            <div className="text-xs text-slate-500 hidden md:flex items-center gap-3">
+            <div className="px-3 py-1 bg-slate-800 rounded-full border border-slate-700">
+                {project.agentConfig.provider === 'custom' ? `🚀 Custom: ${project.agentConfig.model}` : `⚡ Google: ${project.agentConfig.model}`}
+            </div>
+            {activeKbsCount > 0 && (
+                <div className="px-3 py-1 bg-emerald-900/30 text-emerald-400 rounded-full border border-emerald-800/50 flex items-center gap-1">
+                    <span>📚 RAG Enabled: {activeKbsCount}</span>
+                </div>
+            )}
+            </div>
         </div>
       </header>
 
