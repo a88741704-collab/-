@@ -1,4 +1,5 @@
 
+
 export enum PipelineStep {
   Configuration = -1, // New Agent Setup Step
   KnowledgeBase = -2, // Knowledge Base Management
@@ -124,6 +125,12 @@ export interface KnowledgeFile {
 
 export type AgentStatus = 'idle' | 'thinking' | 'generating' | 'error';
 
+export interface UIPreferences {
+    fontSize: number; // base pixel size, default 16
+    accentColor: string; // hex code
+    theme: 'dark' | 'midnight';
+}
+
 export interface ProjectState {
   agentConfig: AgentConfig;
   agentStatus: AgentStatus;
@@ -144,6 +151,7 @@ export interface ProjectState {
   knowledgeBase: string[];
   knowledgeBaseFiles: KnowledgeFile[];
   quickPhrases: string[];
+  uiPreferences: UIPreferences; // New field
 }
 
 export type AIModelType = 'text-fast' | 'text-reasoning' | 'image' | 'video';

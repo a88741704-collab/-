@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { PipelineStep, ProjectState } from './types';
+import { PipelineStep, ProjectState, UIPreferences } from './types';
 import StepConfiguration, { AVAILABLE_PLUGINS } from './components/StepConfiguration';
 import StepIdea from './components/StepIdea';
 import StepWorldReview from './components/StepWorldReview';
@@ -8,10 +9,18 @@ import StepOutline from './components/StepOutline';
 import StepWriter from './components/StepWriter';
 import StepKnowledgeBase from './components/StepKnowledgeBase'; 
 import StatusPanel from './components/StatusPanel';
+import DashboardModal from './components/DashboardModal';
 import { get, set } from 'idb-keyval'; 
 
 const INITIAL_RAG_ID = 'kb-default-01';
 const STORAGE_KEY = 'novel_craft_project_v1';
+
+// Default UI Preferences
+const DEFAULT_UI_PREFS: UIPreferences = {
+    fontSize: 16,
+    accentColor: '#4f46e5', // Indigo-600
+    theme: 'dark'
+};
 
 const INITIAL_PROJECT: ProjectState = {
   agentConfig: {
@@ -63,7 +72,8 @@ const INITIAL_PROJECT: ProjectState = {
       "动作：他眉头微皱，指尖轻轻敲击着桌面，似乎在权衡利弊。",
       "战斗：剑光如虹，瞬息间已刺出三剑，封死了对方所有退路。",
       "心理：一种莫名的恐惧如同潮水般涌上心头，令他几乎窒息。"
-  ]
+  ],
+  uiPreferences: DEFAULT_UI_PREFS
 };
 
 // Define Main Navigation Groups
@@ -81,9 +91,20 @@ const PIPELINE_STEPS = [
   { id: PipelineStep.Drafting, label: '5. 写作与改编' }, 
 ];
 
+// Helper: Hex to RGB for CSS vars
+const hexToRgb = (hex: string) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : null;
+}
+
 export default function App() {
   const [currentStep, setCurrentStep] = useState<PipelineStep>(PipelineStep.Configuration);
   const [project, setProject] = useState<ProjectState>(INITIAL_PROJECT);
+  const [showDashboard, setShowDashboard] = useState(false);
   
   // Persistence States
   const [isLoaded, setIsLoaded] = useState(false);
@@ -95,7 +116,7 @@ export default function App() {
       try {
         const savedProject = await get(STORAGE_KEY);
         if (savedProject) {
-          // Merge with initial to ensure new schema fields exist if updated
+          // Merge with initial
           const mergedPlugins = savedProject.agentConfig?.plugins?.[0]?.content 
               ? savedProject.agentConfig.plugins 
               : INITIAL_PROJECT.agentConfig.plugins;
@@ -107,6 +128,10 @@ export default function App() {
                   ...INITIAL_PROJECT.agentConfig,
                   ...savedProject.agentConfig,
                   plugins: mergedPlugins
+              },
+              uiPreferences: {
+                  ...INITIAL_PROJECT.uiPreferences,
+                  ...(savedProject.uiPreferences || {})
               },
               agentStatus: 'idle', 
               agentTask: '已恢复上次工作状态' 
@@ -121,18 +146,58 @@ export default function App() {
     loadData();
   }, []);
 
-  // 2. Auto-Save Data on Change (Debounced)
+  // 2. Auto-Save
   useEffect(() => {
     if (!isLoaded) return;
-
     const timer = setTimeout(() => {
       set(STORAGE_KEY, project)
         .then(() => setLastSaved(new Date()))
         .catch(err => console.error("Save failed", err));
     }, 1000); 
-
     return () => clearTimeout(timer);
   }, [project, isLoaded]);
+
+  // 3. Apply Theme (CSS Injection)
+  useEffect(() => {
+      const prefs = project.uiPreferences || DEFAULT_UI_PREFS;
+      const rgb = hexToRgb(prefs.accentColor || '#4f46e5');
+      
+      if (rgb) {
+          // We override Tailwind's indigo-600/500/400 colors globally by injecting a style tag
+          // This is a hack to allow theming without recompiling Tailwind
+          const styleId = 'dynamic-theme-styles';
+          let styleTag = document.getElementById(styleId);
+          if (!styleTag) {
+              styleTag = document.createElement('style');
+              styleTag.id = styleId;
+              document.head.appendChild(styleTag);
+          }
+          
+          styleTag.innerHTML = `
+              :root {
+                  --accent-r: ${rgb.r};
+                  --accent-g: ${rgb.g};
+                  --accent-b: ${rgb.b};
+              }
+              /* Override Indigo-600 (Primary Buttons/Backgrounds) */
+              .bg-indigo-600 { background-color: rgb(${rgb.r}, ${rgb.g}, ${rgb.b}) !important; }
+              .hover\\:bg-indigo-500:hover { background-color: rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.8) !important; }
+              
+              /* Override Indigo-400 (Text Highlights) */
+              .text-indigo-400 { color: rgb(${Math.min(255, rgb.r + 60)}, ${Math.min(255, rgb.g + 60)}, ${Math.min(255, rgb.b + 100)}) !important; }
+              
+              /* Override Border */
+              .border-indigo-500 { border-color: rgb(${rgb.r}, ${rgb.g}, ${rgb.b}) !important; }
+          `;
+      }
+  }, [project.uiPreferences]);
+
+  const handleUpdatePrefs = (newPrefs: Partial<UIPreferences>) => {
+      setProject(prev => ({
+          ...prev,
+          uiPreferences: { ...prev.uiPreferences, ...newPrefs }
+      }));
+  };
 
   const renderStep = () => {
     switch (currentStep) {
@@ -157,7 +222,6 @@ export default function App() {
     }
   };
 
-  // Check if we have a valid configuration to proceed
   const hasValidConfig = 
       (project.agentConfig.provider === 'custom' && !!project.agentConfig.customApiKey) || 
       (project.agentConfig.provider === 'google' && (!!process.env.API_KEY || !!import.meta.env.VITE_API_KEY));
@@ -197,43 +261,61 @@ export default function App() {
 
   const isPipelineMode = currentStep >= 0;
   const activeKbsCount = project.agentConfig.ragConfigs?.filter(r => r.enabled).length || 0;
+  
+  // Apply Font Size dynamically
+  const fontSizeStyle = { fontSize: `${project.uiPreferences?.fontSize || 16}px` };
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#0f172a] text-slate-200 overflow-hidden">
+    <div className="h-screen w-screen flex flex-col bg-[#0f172a] text-slate-200 overflow-hidden transition-colors duration-500" style={fontSizeStyle}>
       
+      {showDashboard && (
+          <DashboardModal 
+            project={project}
+            onUpdatePrefs={handleUpdatePrefs}
+            onClose={() => setShowDashboard(false)}
+          />
+      )}
+
       {/* Header */}
-      <header className="h-16 shrink-0 border-b border-slate-800 bg-[#0f172a]/80 backdrop-blur flex items-center px-6 justify-between shadow-sm z-50">
+      <header className="h-[4em] shrink-0 border-b border-slate-800 bg-[#0f172a]/80 backdrop-blur flex items-center px-6 justify-between shadow-sm z-50">
         <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/30">N</div>
-            <h1 className="text-lg font-bold tracking-tight text-white">NovelCraft <span className="text-indigo-400">AI</span></h1>
+            <div className="w-[2em] h-[2em] bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/30 text-[1.2em]">N</div>
+            <h1 className="text-[1.1em] font-bold tracking-tight text-white">NovelCraft <span className="text-indigo-400">AI</span></h1>
         </div>
         <div className="flex items-center gap-4">
             {lastSaved && (
-                <span className="text-[10px] text-slate-500 font-mono hidden sm:block animate-fade-in">
+                <span className="text-[0.7em] text-slate-500 font-mono hidden sm:block animate-fade-in">
                     已自动保存 {lastSaved.toLocaleTimeString()}
                 </span>
             )}
-            <div className="text-xs text-slate-500 hidden md:flex items-center gap-3">
-            <div className="px-3 py-1 bg-slate-800 rounded-full border border-slate-700">
-                {project.agentConfig.provider === 'custom' ? `🚀 Custom: ${project.agentConfig.model}` : `⚡ Google: ${project.agentConfig.model}`}
-            </div>
-            {activeKbsCount > 0 && (
-                <div className="px-3 py-1 bg-emerald-900/30 text-emerald-400 rounded-full border border-emerald-800/50 flex items-center gap-1">
-                    <span>📚 RAG Enabled: {activeKbsCount}</span>
+            <div className="text-[0.8em] text-slate-500 hidden md:flex items-center gap-3">
+                <div className="px-3 py-1 bg-slate-800 rounded-full border border-slate-700 truncate max-w-[150px]">
+                    {project.agentConfig.provider === 'custom' ? `🚀 ${project.agentConfig.model}` : `⚡ ${project.agentConfig.model}`}
                 </div>
-            )}
+                {activeKbsCount > 0 && (
+                    <div className="px-3 py-1 bg-emerald-900/30 text-emerald-400 rounded-full border border-emerald-800/50 flex items-center gap-1">
+                        <span>📚 KB: {activeKbsCount}</span>
+                    </div>
+                )}
+                <button 
+                    onClick={() => setShowDashboard(true)}
+                    className="p-2 hover:bg-slate-700 rounded-full transition-colors text-slate-300 hover:text-white"
+                    title="控制中心 / 设置"
+                >
+                    <svg className="w-[1.4em] h-[1.4em]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                </button>
             </div>
         </div>
       </header>
 
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
-        <aside className="w-64 border-r border-slate-800 bg-[#151b28] flex flex-col hidden md:flex z-40">
+        <aside className="w-[16em] border-r border-slate-800 bg-[#151b28] flex flex-col hidden md:flex z-40">
             <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
                 <div className="space-y-1 mb-6">
                     <button
                         onClick={() => setCurrentStep(PipelineStep.Configuration)}
-                        className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all flex items-center gap-3 font-medium ${currentStep === PipelineStep.Configuration ? 'bg-slate-700 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+                        className={`w-full text-left px-3 py-2.5 rounded-lg text-[0.9em] transition-all flex items-center gap-3 font-medium ${currentStep === PipelineStep.Configuration ? 'bg-slate-700 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
                     >
                         <span>⚙️</span> 配置与插件
                     </button>
@@ -241,7 +323,7 @@ export default function App() {
                         <button
                             key={nav.id}
                             onClick={() => setCurrentStep(nav.id)}
-                            className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all flex items-center gap-3 font-medium ${
+                            className={`w-full text-left px-3 py-2.5 rounded-lg text-[0.9em] transition-all flex items-center gap-3 font-medium ${
                                 (nav.id === PipelineStep.KnowledgeBase && currentStep === PipelineStep.KnowledgeBase) ||
                                 (nav.id === PipelineStep.IdeaGeneration && isPipelineMode)
                                 ? 'bg-gradient-to-r from-emerald-900/50 to-transparent text-emerald-400 border-l-2 border-emerald-500' 
@@ -256,20 +338,20 @@ export default function App() {
                 {isPipelineMode && (
                     <div className="ml-2 pl-3 border-l border-slate-800 space-y-1 relative">
                         <div className="absolute -left-[1px] top-0 bottom-0 w-[1px] bg-slate-800"></div>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 pl-2">Creation Pipeline</p>
+                        <p className="text-[0.6em] font-bold text-slate-500 uppercase tracking-widest mb-3 pl-2">Creation Pipeline</p>
                         {PIPELINE_STEPS.slice(1).map((step, idx) => {
                             const isActive = currentStep === step.id || (step.id === PipelineStep.Drafting && currentStep > PipelineStep.Drafting);
                             return (
                                 <button
                                     key={step.id}
                                     onClick={() => setCurrentStep(step.id)}
-                                    className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-2 group ${
+                                    className={`w-full text-left px-3 py-2 rounded-lg text-[0.8em] transition-all flex items-center gap-2 group ${
                                         isActive 
                                         ? 'bg-indigo-600/10 text-indigo-300 font-semibold' 
                                         : 'text-slate-500 hover:text-slate-300'
                                     }`}
                                 >
-                                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] border ${
+                                    <span className={`w-[1.6em] h-[1.6em] rounded-full flex items-center justify-center text-[0.8em] border ${
                                         isActive ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-700 bg-slate-800 text-slate-500 group-hover:border-slate-500'
                                     }`}>
                                         {idx + 1}
@@ -284,7 +366,7 @@ export default function App() {
             
             <div className="p-4 border-t border-slate-800 bg-[#0f1219]">
                 <StatusPanel status={project.agentStatus} task={project.agentTask} />
-                <div className="mt-3 flex justify-between items-center text-[10px] text-slate-500 font-mono">
+                <div className="mt-3 flex justify-between items-center text-[0.7em] text-slate-500 font-mono">
                     <span>Total Words</span>
                     <span className="text-emerald-500 font-bold">{project.chapters.reduce((acc, curr) => acc + (curr.content?.length || 0), 0).toLocaleString()}</span>
                 </div>
